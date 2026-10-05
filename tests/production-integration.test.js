@@ -42,6 +42,12 @@ test('combined migration and import: dry-run rolls back, IDs/credentials survive
     source
       .prepare('UPDATE embeddings SET vector=?')
       .run(JSON.stringify(Array.from({ length: 384 }, (_, i) => (i === 0 ? 1 : 0))));
+    source.exec(
+      'CREATE TABLE security_source_access(source_id TEXT PRIMARY KEY,workspace_id TEXT,principals TEXT)',
+    );
+    source
+      .prepare('INSERT INTO security_source_access VALUES(?,?,?)')
+      .run('fixture_source', 'fixture_workspace', JSON.stringify(['user:fixture_user']));
     source.close();
     const before = await fs.readFile(file);
     const dry = await importToPostgres(pool, file, { legacyKey: key, integrate, dryRun: true });
@@ -53,6 +59,10 @@ test('combined migration and import: dry-run rolls back, IDs/credentials survive
     const report = await importToPostgres(pool, file, { legacyKey: key, integrate, dryRun: false });
     assert.match(report.secretCompatibility, /rewrapped/);
     assert.deepEqual(await fs.readFile(file), before);
+    assert.deepEqual(
+      (await pg.query('SELECT access FROM relay.knowledge_sources')).rows[0].access,
+      { mode: 'restricted', principalIds: ['user:fixture_user'] },
+    );
     const r = (await pg.query('SELECT * FROM relay.security_credentials')).rows[0];
     const ctx = {
       workspaceId: r.workspace_id,

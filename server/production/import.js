@@ -68,12 +68,25 @@ export function createIntegratedImport(vault) {
           throw new Error('LEGACY_DOCUMENT_ACL_REVIEW_REQUIRED');
         access = { mode: 'restricted', principalIds: ids.map((id) => 'user:' + id) };
       }
+      const legacyAcl = input.legacySourceAccess?.find((a) => a.source_id === s.id);
+      if (legacyAcl)
+        access = accessSchema.parse({
+          mode: 'restricted',
+          principalIds: JSON.parse(legacyAcl.principals),
+        });
       const draft = {
         collectionId: s.collection_id,
         externalId: 'legacy:' + s.id,
         name: s.name,
         text: s.content,
-        metadata: {},
+        metadata: Object.fromEntries(
+          Object.entries(metadata).filter(
+            ([k, v]) =>
+              /^[A-Za-z0-9_-]{1,60}$/.test(k) &&
+              ['string', 'number', 'boolean'].includes(typeof v) &&
+              !['visibility', 'access', 'allowedUserIds'].includes(k),
+          ),
+        ),
         access,
       };
       documentSchema.parse(draft);

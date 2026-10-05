@@ -6,9 +6,9 @@
     "usersPerWorkspace": 1,
     "documents": 20,
     "chunksPerDocument": 10,
-    "concurrency": 4,
-    "apiRps": 10,
-    "retrievalRps": 2,
+    "concurrency": 2,
+    "apiRps": 2,
+    "retrievalRps": 1,
     "ingestionEverySeconds": 5,
     "faultEveryRuns": 10
   },

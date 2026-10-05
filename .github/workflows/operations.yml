@@ -8,6 +8,8 @@ permissions:
 concurrency:
   group: operations-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
+env:
+  ONNXRUNTIME_NODE_INSTALL: skip
 jobs:
   integrated-deployment:
     runs-on: ubuntu-latest

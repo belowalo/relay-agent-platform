@@ -96,9 +96,34 @@ export function readImport(source, { legacyKey } = {}) {
       row.active_since = null;
     }
     const counts = Object.fromEntries([...tables].map(([name, rows]) => [name, rows.length]));
+    const legacySourceAccess = db
+      .prepare(
+        "SELECT 1 AS found FROM sqlite_master WHERE type='table' AND name='security_source_access'",
+      )
+      .get()
+      ? db
+          .prepare('SELECT source_id,workspace_id,principals FROM security_source_access')
+          .all()
+          .map((r) => ({ ...r }))
+      : [];
+    for (const acl of legacySourceAccess) {
+      const source = indices.get('sources').get(acl.source_id);
+      if (!source || acl.workspace_id !== source.workspace_id) fail('IMPORT_TENANT_MISMATCH');
+      const principals = JSON.parse(acl.principals);
+      if (
+        !Array.isArray(principals) ||
+        !principals.length ||
+        principals.some(
+          (p) =>
+            typeof p !== 'string' || !/^(user|application|service):[a-zA-Z0-9_-]{1,128}$/.test(p),
+        )
+      )
+        fail('LEGACY_DOCUMENT_ACL_REVIEW_REQUIRED');
+    }
     return {
       tables,
       counts,
+      legacySourceAccess,
       sourceSha256: crypto.createHash('sha256').update(fs.readFileSync(source)).digest('hex'),
       secretCompatibility: 'legacy envelopes verified, preserved; security-owned rewrap required',
       haltedRuns: tables

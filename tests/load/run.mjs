@@ -153,6 +153,7 @@ try {
   }
   await until(
     async () => {
+      await sleep(1000);
       const states = await Promise.all(
         workspaces.map((w) => w.owner.ok(`${w.base}/collections/${w.collection.id}/sources`)),
       );
@@ -252,7 +253,11 @@ try {
           `${workspace.base}/workflows/${workspace.workflows[model].id}/runs`,
           { input: correlation, mode: 'live' },
         );
-        const done = await waitRun(workspace.owner, workspace.base, run.id);
+        const done = await until(async () => {
+          await sleep(500);
+          const d = await workspace.owner.ok(`${workspace.base}/runs/${run.id}`);
+          return ['completed', 'failed', 'cancelled'].includes(d.status) && d;
+        });
         const earliest = Math.min(
           ...done.steps.filter((s) => s.started_at).map((s) => new Date(s.started_at).getTime()),
         );
