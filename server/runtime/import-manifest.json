@@ -1,0 +1,798 @@
+[
+  {
+    "name": "users",
+    "columns": [
+      "id",
+      "email",
+      "name",
+      "password",
+      "created_at",
+      "mfa_secret",
+      "mfa_pending",
+      "mfa_last_step"
+    ],
+    "parent": null,
+    "fks": []
+  },
+  {
+    "name": "sessions",
+    "columns": ["token", "user_id", "expires_at"],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "users",
+        "from": "user_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "CASCADE",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "workspaces",
+    "columns": ["id", "name", "settings", "created_at"],
+    "parent": null,
+    "fks": []
+  },
+  {
+    "name": "members",
+    "columns": ["workspace_id", "user_id", "role"],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "users",
+        "from": "user_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "NO ACTION",
+        "match": "NONE"
+      },
+      {
+        "id": 1,
+        "seq": 0,
+        "table": "workspaces",
+        "from": "workspace_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "CASCADE",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "invitations",
+    "columns": ["id", "workspace_id", "email", "role", "token_hash", "expires_at", "accepted"],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "workspaces",
+        "from": "workspace_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "NO ACTION",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "projects",
+    "columns": ["id", "workspace_id", "name", "description", "created_at"],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "workspaces",
+        "from": "workspace_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "NO ACTION",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "workflows",
+    "columns": [
+      "id",
+      "workspace_id",
+      "project_id",
+      "name",
+      "description",
+      "graph",
+      "revision",
+      "created_at",
+      "updated_at"
+    ],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "projects",
+        "from": "project_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "NO ACTION",
+        "match": "NONE"
+      },
+      {
+        "id": 1,
+        "seq": 0,
+        "table": "workspaces",
+        "from": "workspace_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "NO ACTION",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "versions",
+    "columns": ["id", "workflow_id", "revision", "name", "graph", "created_at"],
+    "parent": "workflows",
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "workflows",
+        "from": "workflow_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "CASCADE",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "agents",
+    "columns": ["id", "workspace_id", "name", "config", "created_at"],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "workspaces",
+        "from": "workspace_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "NO ACTION",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "connections",
+    "columns": [
+      "id",
+      "workspace_id",
+      "name",
+      "provider",
+      "endpoint",
+      "model",
+      "secret",
+      "config",
+      "created_at"
+    ],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "workspaces",
+        "from": "workspace_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "NO ACTION",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "tools",
+    "columns": ["id", "workspace_id", "name", "kind", "config", "created_at"],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "workspaces",
+        "from": "workspace_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "NO ACTION",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "collections",
+    "columns": ["id", "workspace_id", "name", "config", "created_at"],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "workspaces",
+        "from": "workspace_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "NO ACTION",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "sources",
+    "columns": [
+      "id",
+      "workspace_id",
+      "collection_id",
+      "name",
+      "url",
+      "status",
+      "content",
+      "progress",
+      "error",
+      "created_at",
+      "index_generation",
+      "index_lease_until",
+      "index_lease_owner",
+      "metadata"
+    ],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "collections",
+        "from": "collection_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "CASCADE",
+        "match": "NONE"
+      },
+      {
+        "id": 1,
+        "seq": 0,
+        "table": "workspaces",
+        "from": "workspace_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "NO ACTION",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "chunks",
+    "columns": ["id", "workspace_id", "collection_id", "source_id", "ordinal", "content"],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "sources",
+        "from": "source_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "CASCADE",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "memories",
+    "columns": ["id", "workspace_id", "agent_id", "conversation_id", "content", "created_at"],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "workspaces",
+        "from": "workspace_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "NO ACTION",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "runs",
+    "columns": [
+      "id",
+      "workspace_id",
+      "workflow_id",
+      "version_id",
+      "graph",
+      "input",
+      "status",
+      "mode",
+      "conversation_id",
+      "parent_id",
+      "output",
+      "error",
+      "usage",
+      "created_at",
+      "finished_at",
+      "application_id",
+      "active_ms",
+      "active_since",
+      "lease_owner",
+      "lease_until",
+      "lease_generation"
+    ],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "workspaces",
+        "from": "workspace_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "NO ACTION",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "steps",
+    "columns": [
+      "id",
+      "run_id",
+      "node_id",
+      "status",
+      "input",
+      "output",
+      "error",
+      "attempt",
+      "started_at",
+      "finished_at",
+      "checkpoint"
+    ],
+    "parent": "runs",
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "runs",
+        "from": "run_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "CASCADE",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "events",
+    "columns": ["id", "run_id", "type", "node_id", "data", "created_at"],
+    "parent": "runs",
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "runs",
+        "from": "run_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "CASCADE",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "actions",
+    "columns": [
+      "id",
+      "workspace_id",
+      "run_id",
+      "step_id",
+      "tool_id",
+      "status",
+      "result",
+      "error",
+      "created_at",
+      "side_effect"
+    ],
+    "parent": "runs",
+    "fks": []
+  },
+  {
+    "name": "applications",
+    "columns": [
+      "id",
+      "workspace_id",
+      "workflow_id",
+      "version_id",
+      "name",
+      "settings",
+      "token_hash",
+      "created_at",
+      "graph_snapshot"
+    ],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "versions",
+        "from": "version_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "NO ACTION",
+        "match": "NONE"
+      },
+      {
+        "id": 1,
+        "seq": 0,
+        "table": "workflows",
+        "from": "workflow_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "NO ACTION",
+        "match": "NONE"
+      },
+      {
+        "id": 2,
+        "seq": 0,
+        "table": "workspaces",
+        "from": "workspace_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "NO ACTION",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "artifacts",
+    "columns": ["id", "workspace_id", "run_id", "name", "content", "created_at"],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "workspaces",
+        "from": "workspace_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "NO ACTION",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "audit",
+    "columns": ["id", "workspace_id", "user_id", "action", "target", "created_at"],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "workspaces",
+        "from": "workspace_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "NO ACTION",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "embeddings",
+    "columns": ["chunk_id", "workspace_id", "collection_id", "model", "vector"],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "chunks",
+        "from": "chunk_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "CASCADE",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "datasets",
+    "columns": [
+      "id",
+      "workspace_id",
+      "name",
+      "description",
+      "cases",
+      "revision",
+      "created_at",
+      "updated_at"
+    ],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "workspaces",
+        "from": "workspace_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "NO ACTION",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "evaluations",
+    "columns": [
+      "id",
+      "workspace_id",
+      "dataset_id",
+      "dataset_snapshot",
+      "workflow_id",
+      "workflow_revision",
+      "name",
+      "status",
+      "config",
+      "summary",
+      "lease_owner",
+      "lease_until",
+      "created_at",
+      "finished_at"
+    ],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "workspaces",
+        "from": "workspace_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "NO ACTION",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "evaluation_cases",
+    "columns": [
+      "id",
+      "evaluation_id",
+      "ordinal",
+      "input",
+      "expected",
+      "run_id",
+      "judge_run_id",
+      "status",
+      "score",
+      "result",
+      "error"
+    ],
+    "parent": "evaluations",
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "evaluations",
+        "from": "evaluation_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "CASCADE",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "feedback",
+    "columns": ["id", "workspace_id", "run_id", "user_id", "rating", "comment", "created_at"],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "runs",
+        "from": "run_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "CASCADE",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "prompt_library",
+    "columns": [
+      "id",
+      "workspace_id",
+      "name",
+      "description",
+      "content",
+      "revision",
+      "created_at",
+      "updated_at"
+    ],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "workspaces",
+        "from": "workspace_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "NO ACTION",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "prompt_versions",
+    "columns": ["id", "prompt_id", "revision", "content", "created_at"],
+    "parent": "prompt_library",
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "prompt_library",
+        "from": "prompt_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "CASCADE",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "schedules",
+    "columns": [
+      "id",
+      "workspace_id",
+      "workflow_id",
+      "name",
+      "interval_minutes",
+      "input",
+      "mode",
+      "enabled",
+      "next_at",
+      "last_run_id",
+      "created_at",
+      "cron_expression",
+      "timezone"
+    ],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "workflows",
+        "from": "workflow_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "CASCADE",
+        "match": "NONE"
+      },
+      {
+        "id": 1,
+        "seq": 0,
+        "table": "workspaces",
+        "from": "workspace_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "NO ACTION",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "auth_challenges",
+    "columns": ["id", "user_id", "kind", "expires_at", "attempts"],
+    "parent": null,
+    "fks": []
+  },
+  {
+    "name": "reset_tokens",
+    "columns": ["token_hash", "user_id", "expires_at"],
+    "parent": null,
+    "fks": []
+  },
+  {
+    "name": "oidc_states",
+    "columns": ["id", "verifier", "nonce", "expires_at"],
+    "parent": null,
+    "fks": []
+  },
+  {
+    "name": "external_identities",
+    "columns": ["issuer", "subject", "user_id"],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "users",
+        "from": "user_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "NO ACTION",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "integration_catalog",
+    "columns": ["id", "name", "kind", "description", "config", "category"],
+    "parent": null,
+    "fks": []
+  },
+  {
+    "name": "mfa_recovery",
+    "columns": ["user_id", "code_hash"],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "users",
+        "from": "user_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "NO ACTION",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "model_cache",
+    "columns": ["workspace_id", "cache_key", "response", "expires_at"],
+    "parent": null,
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "workspaces",
+        "from": "workspace_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "CASCADE",
+        "match": "NONE"
+      }
+    ]
+  },
+  {
+    "name": "tool_approvals",
+    "columns": [
+      "id",
+      "step_id",
+      "tool_id",
+      "tool_name",
+      "input",
+      "input_hash",
+      "status",
+      "created_at"
+    ],
+    "parent": "steps",
+    "fks": [
+      {
+        "id": 0,
+        "seq": 0,
+        "table": "steps",
+        "from": "step_id",
+        "to": "id",
+        "on_update": "NO ACTION",
+        "on_delete": "CASCADE",
+        "match": "NONE"
+      }
+    ]
+  }
+]

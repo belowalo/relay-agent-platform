@@ -1,0 +1,12 @@
+ALTER TABLE relay.steps ADD UNIQUE(workspace_id,run_id,id);
+ALTER TABLE relay.actions ADD UNIQUE(workspace_id,run_id,id);
+ALTER TABLE relay.actions ADD FOREIGN KEY(workspace_id,run_id,step_id) REFERENCES relay.steps(workspace_id,run_id,id) ON DELETE CASCADE;
+ALTER TABLE relay.actions ADD FOREIGN KEY(workspace_id,run_id) REFERENCES relay.runs(workspace_id,id) ON DELETE CASCADE;
+ALTER TABLE relay.runtime_approvals ADD FOREIGN KEY(workspace_id,run_id,step_id) REFERENCES relay.steps(workspace_id,run_id,id) ON DELETE CASCADE;
+ALTER TABLE relay.runtime_approvals ADD FOREIGN KEY(workspace_id,run_id,action_id) REFERENCES relay.actions(workspace_id,run_id,id) ON DELETE CASCADE;
+ALTER TABLE relay.runtime_dead_letters ADD FOREIGN KEY(workspace_id,run_id) REFERENCES relay.runs(workspace_id,id) ON DELETE CASCADE;
+ALTER TABLE relay.runtime_schedule_fires ADD FOREIGN KEY(workspace_id,run_id) REFERENCES relay.runs(workspace_id,id) ON DELETE CASCADE;
+ALTER TABLE relay.runtime_schedule_fires ADD FOREIGN KEY(workspace_id,schedule_id) REFERENCES relay.schedules(workspace_id,id) ON DELETE CASCADE;
+ALTER TABLE relay.versions ADD UNIQUE(workspace_id,workflow_id,id);
+ALTER TABLE relay.schedules ADD FOREIGN KEY(workspace_id,workflow_id,version_id) REFERENCES relay.versions(workspace_id,workflow_id,id);
+ALTER TABLE relay.runs ADD FOREIGN KEY(workspace_id,workflow_id,version_id) REFERENCES relay.versions(workspace_id,workflow_id,id);
