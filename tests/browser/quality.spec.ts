@@ -1,0 +1,81 @@
+import { test, expect } from '@playwright/test';
+import * as OTPAuth from 'otpauth';
+test('datasets → evaluation → prompt reuse → operations → account security', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  const email = `quality-${Date.now()}@relay.test`;
+  await page.goto('/');
+  await page.getByLabel('Your name').fill('Quality Tester');
+  await page.getByLabel('Email address').fill(email);
+  await page.getByLabel('Password', { exact: true }).fill('Quality-password-2026');
+  await page.getByRole('button', { name: 'Create workspace', exact: true }).click();
+  await page.getByRole('button', { name: 'Evaluations', exact: true }).click();
+  await page.getByRole('button', { name: 'New dataset', exact: true }).click();
+  await page.getByLabel('Dataset name').fill('Execution regression');
+  await page
+    .getByLabel('Test cases (JSON)')
+    .fill('[{"input":"Research Orion launch"},{"input":"Review the evidence"}]');
+  await page.getByRole('button', { name: 'Save dataset', exact: true }).click();
+  await page.getByRole('button', { name: 'Run evaluation', exact: true }).click();
+  await page.getByLabel('Evaluation name').fill('Baseline run');
+  await page.getByRole('button', { name: 'Start evaluation', exact: true }).click();
+  await expect(page.locator('.quality-metrics')).toContainText('2/2', { timeout: 25000 });
+  await expect(page.locator('.quality-metrics')).toContainText('100%');
+  await page.locator('.quality-cases summary').first().click();
+  await expect(page.locator('.quality-cases')).toContainText('Development preview');
+  await page.screenshot({ path: 'test-results/evaluations-dark.png', fullPage: true });
+  await page.getByRole('button', { name: 'Prompt library', exact: true }).click();
+  await page.getByRole('button', { name: 'New prompt', exact: true }).click();
+  await page.getByLabel('Prompt name').fill('Evidence policy');
+  await page
+    .getByLabel('Instructions', { exact: true })
+    .fill('Only cite sources that were retrieved.');
+  await page.getByRole('button', { name: 'Save prompt revision', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Evidence policy' })).toBeVisible();
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await page.getByRole('button', { name: 'Open your workflow', exact: true }).click();
+  await page.locator('.canvas-node').filter({ hasText: 'Research analyst' }).click();
+  await page.getByLabel('Use a saved prompt').selectOption({ label: 'Evidence policy · v1' });
+  await expect(page.getByLabel('Instructions', { exact: true })).toHaveValue(
+    'Only cite sources that were retrieved.',
+  );
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByRole('button', { name: 'Operations', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Execution workers', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Schedule workflow', exact: true }).click();
+  await page.getByLabel('Schedule name').fill('Morning briefing');
+  await page.getByLabel('Task input').fill('Summarize project updates');
+  await page.getByRole('button', { name: 'Save schedule', exact: true }).click();
+  await expect(page.locator('.quality-row').filter({ hasText: 'Morning briefing' })).toBeVisible();
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Enable', exact: true })).toBeVisible();
+  await page.screenshot({ path: 'test-results/operations-dark.png', fullPage: true });
+  await page.getByRole('button', { name: 'Model connections', exact: true }).click();
+  await page.getByRole('button', { name: 'Add connection', exact: true }).click();
+  await page.getByLabel('Quick provider setup').selectOption('groq');
+  await expect(page.getByLabel('Base endpoint')).toHaveValue('https://api.groq.com/openai/v1');
+  await expect(page.getByLabel('Model identifier')).toHaveValue('openai/gpt-oss-20b');
+  await page.getByRole('button', { name: 'Close dialog' }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'security', exact: true }).click();
+  await page.getByLabel('Confirm your password').fill('Quality-password-2026');
+  await page.getByRole('button', { name: 'Set up authenticator' }).click();
+  const secret = await page.getByLabel('Authenticator setup key').inputValue();
+  const otp = new OTPAuth.TOTP({ secret: OTPAuth.Secret.fromBase32(secret) });
+  await page.getByLabel('Authenticator code', { exact: true }).fill(otp.generate());
+  await page.getByRole('button', { name: 'Enable two-factor authentication' }).click();
+  await expect(page.getByText('Save these recovery codes now.')).toBeVisible();
+  await expect(page.getByText('8 recovery codes remaining.')).toBeVisible();
+  const codes = (await page.locator('.result-block pre').innerText()).split('\n');
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.getByLabel('Email address').fill(email);
+  await page.getByLabel('Password', { exact: true }).fill('Quality-password-2026');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).first().click();
+  await expect(page.getByRole('heading', { name: 'Verify your sign-in' })).toBeVisible();
+  await page.getByLabel('Authenticator or recovery code').fill(codes[0]);
+  await page.getByRole('button', { name: 'Verify sign-in', exact: true }).click();
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Welcome back, Quality.' })).toBeVisible();
+  expect(errors).toEqual([]);
+});

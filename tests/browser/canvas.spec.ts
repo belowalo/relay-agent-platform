@@ -1,0 +1,43 @@
+import { test, expect } from '@playwright/test';
+test('canvas node library, selection clipboard, history, validation, and version restore', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByLabel('Your name').fill('Canvas Tester');
+  await page.getByLabel('Email address').fill(`canvas-${Date.now()}@relay.test`);
+  await page.getByLabel('Password').fill('Canvas-password-2026');
+  await page.getByRole('button', { name: 'Create workspace', exact: true }).click();
+  await page.getByRole('button', { name: 'Open your workflow' }).click();
+  await expect(page.locator('.canvas-node')).toHaveCount(6);
+  await page.getByRole('button', { name: 'Specialist agent', exact: true }).click();
+  await expect(page.locator('.canvas-node')).toHaveCount(7);
+  await page.locator('.canvas-wrap').click({ position: { x: 40, y: 160 } });
+  await page.getByRole('button', { name: 'Undo (Ctrl Z)' }).click();
+  await expect(page.locator('.canvas-node')).toHaveCount(6);
+  await page.getByRole('button', { name: 'Redo (Ctrl Shift Z)' }).click();
+  await expect(page.locator('.canvas-node')).toHaveCount(7);
+  await page.getByRole('button', { name: 'Validate', exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText('connect this component to the task input');
+  await page.getByRole('button', { name: 'Close dialog' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText(/Saved · v/)).toBeVisible();
+  await page.getByRole('button', { name: 'Version history' }).click();
+  await page.getByRole('button', { name: 'Restore draft', exact: true }).last().click();
+  await expect(page.locator('.canvas-node')).toHaveCount(6);
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText(/Saved · v/)).toBeVisible();
+  await page.locator('.canvas-node').filter({ hasText: 'Research analyst' }).click();
+  await page.getByRole('button', { name: 'Duplicate', exact: true }).click();
+  await expect(page.locator('.canvas-node')).toHaveCount(7);
+  await page.getByRole('button', { name: 'Undo (Ctrl Z)' }).click();
+  await expect(page.locator('.canvas-node')).toHaveCount(6);
+  await page.locator('.canvas-node').filter({ hasText: 'Research analyst' }).click();
+  await page.keyboard.press('Control+c');
+  await page.keyboard.press('Control+v');
+  await expect(page.locator('.canvas-node')).toHaveCount(7);
+  await page.getByRole('button', { name: 'Undo (Ctrl Z)' }).click();
+  await expect(page.locator('.canvas-node')).toHaveCount(6);
+  await page.getByRole('button', { name: 'Close inspector' }).click();
+  await page.getByRole('button', { name: 'Validate', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Your workflow is connected' })).toBeVisible();
+});

@@ -1,0 +1,32 @@
+services:
+  relay:
+    build: .
+    ports:
+      - '127.0.0.1:4311:4311'
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      DATA_DIR: /app/data
+      ENGINE_ROLE: api
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://127.0.0.1:4311}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    volumes:
+      - relay-data:/app/data
+    restart: unless-stopped
+  worker:
+    build: .
+    command: ['node', 'server/worker.js']
+    environment:
+      NODE_ENV: production
+      DATA_DIR: /app/data
+      WORKER_CAPACITY: ${WORKER_CAPACITY:-24}
+    volumes:
+      - relay-data:/app/data
+    depends_on:
+      relay:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+volumes:
+  relay-data:
