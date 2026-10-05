@@ -103,7 +103,7 @@ test(
           return { data: config.result ?? call.input };
         },
       };
-      const worker = () =>
+      const worker = (overrides = {}) =>
         createRuntimeWorker({
           repository: repo,
           leaseMs: 400,
@@ -131,6 +131,7 @@ test(
               );
             },
           },
+          ...overrides,
         });
       const reference = (id) => ({
         version: 1,
@@ -866,16 +867,39 @@ test(
         async () => {
           const samples = [];
           const overhead = [];
-          for (let i = 0; i < 30; i++) {
-            const start = performance.now();
-            const id = await create(linear('model'));
-            await worker().execute(reference(id));
-            samples.push(performance.now() - start);
-            const provider = metrics
-              .filter((m) => m.runId === id && m.name === 'runtime.provider_ms')
-              .reduce((sum, m) => sum + m.ms, 0);
-            overhead.push(samples.at(-1) - provider);
-            assert.equal((await repo.getRun(c, id)).status, 'completed');
+          const dispatch = [];
+          // Performance uses the production 30s lease; 400ms above is deliberate fault injection.
+          const perfRepo = createRuntimeRepository(database, { leaseMs: 30000 });
+          const runtimeWorker = worker({ repository: perfRepo, leaseMs: 30000 });
+          const consumer = queue.createWorker(runtimeWorker.execute);
+          const dispatcher = createDispatcher({
+            repository: perfRepo,
+            queue,
+            listWorkspaces: async () => [c.workspaceId],
+          });
+          const timer = setInterval(() => dispatcher.tick().catch(() => {}), 250);
+          try {
+            for (let i = 0; i < 30; i++) {
+              const start = performance.now();
+              const id = await create(linear('model'));
+              await until(async () => (await repo.getRun(c, id)).status === 'completed');
+              samples.push(performance.now() - start);
+              const provider = metrics
+                .filter((m) => m.runId === id && m.name === 'runtime.provider_ms')
+                .reduce((sum, m) => sum + m.ms, 0);
+              overhead.push(samples.at(-1) - provider);
+              assert.equal((await repo.getRun(c, id)).status, 'completed');
+              const history = await repo.events(c, id);
+              dispatch.push(
+                Date.parse(history.find((e) => e.type === 'run.running').created_at) -
+                  Date.parse(history.find((e) => e.type === 'run.queued').created_at),
+              );
+            }
+          } finally {
+            clearInterval(timer);
+            await dispatcher.close();
+            await runtimeWorker.close();
+            await consumer.close();
           }
           const p95 = (values) =>
             [...values].sort((a, b) => a - b)[Math.ceil(values.length * 0.95) - 1];
@@ -886,8 +910,9 @@ test(
                 fixtureProviderMs: 20,
                 wallP95Ms: Number(p95(samples).toFixed(2)),
                 applicationOverheadP95Ms: Number(p95(overhead).toFixed(2)),
+                dispatchP95Ms: Number(p95(dispatch).toFixed(2)),
                 scope:
-                  'serial create+publish+enqueue+execute, single service host; excludes production API load qualification',
+                  'serial create+publish+outbox+Redis+worker, 250ms dispatcher sweep, production 30s lease; single service host; excludes production API load qualification',
               }),
           );
           assert.ok(modelCalls >= 30);

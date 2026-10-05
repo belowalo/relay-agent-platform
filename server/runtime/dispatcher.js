@@ -23,6 +23,12 @@ export function createDispatcher({
         try {
           // Redis may lose jobs; a fresh reference bypasses transport completion retention.
           await repository.tx(context, async (s) => {
+            // Completed business state can retire an unacknowledged notification;
+            // do not let historical references delay currently runnable work.
+            await s.query(
+              "UPDATE relay.job_outbox o SET state='published',published_at=now(),lease_owner=NULL,lease_until=NULL WHERE o.workspace_id=$1 AND o.kind='workflow.run' AND o.state!='published' AND EXISTS(SELECT 1 FROM relay.runs r WHERE r.id=o.resource_id AND r.workspace_id=o.workspace_id AND r.status IN ('completed','failed','cancelled'))",
+              [workspaceId],
+            );
             const runs = await s.all(
               `SELECT r.id,r.request_id FROM relay.runs r WHERE r.workspace_id=$1 AND r.actor IS NOT NULL AND r.status IN ('queued','running') AND r.available_at<=now() AND coalesce(r.lease_until,0)<${clockSql} AND NOT EXISTS(SELECT 1 FROM relay.job_outbox o WHERE o.workspace_id=r.workspace_id AND o.resource_id=r.id AND o.kind='workflow.run' AND (o.state!='published' OR o.published_at>now()-interval '5 seconds')) ORDER BY r.created_at LIMIT 1 FOR UPDATE SKIP LOCKED`,
               [workspaceId],
