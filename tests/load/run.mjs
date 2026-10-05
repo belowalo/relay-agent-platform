@@ -148,8 +148,8 @@ try {
     await Promise.all(workspaces.map((w) => w.owner.ok(w.base + '/collections')))
   ).flat();
   manifest.corpus = {
-    documents: corpus.reduce((sum, c) => sum + c.source_count, 0),
-    chunks: corpus.reduce((sum, c) => sum + c.chunk_count, 0),
+    documents: corpus.reduce((sum, c) => sum + Number(c.source_count), 0),
+    chunks: corpus.reduce((sum, c) => sum + Number(c.chunk_count), 0),
     generatedBytes:
       Buffer.byteLength(corpusDocument(0, profile.chunksPerDocument)) * profile.documents,
     retrieval: 'keyword/lexical; semantic capacity requires separate integrated run',
@@ -178,7 +178,7 @@ try {
           .reduce(
             (counts, entry) => ({
               ...counts,
-              [entry.status]: (counts[entry.status] || 0) + entry.count,
+              [entry.status]: (counts[entry.status] || 0) + Number(entry.count),
             }),
             {},
           ),
@@ -345,7 +345,7 @@ try {
   ).flatMap((o) => o.queue);
   const remainingActive = finalQueue
     .filter((entry) => ['queued', 'running'].includes(entry.status))
-    .reduce((sum, entry) => sum + entry.count, 0);
+    .reduce((sum, entry) => sum + Number(entry.count), 0);
   const queueBounded =
     queueSeries.length > 0 &&
     queueSeries.every((q) => (q.states.queued || 0) <= thresholds.maximumQueuedRuns) &&
