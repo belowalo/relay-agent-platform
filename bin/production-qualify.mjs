@@ -150,7 +150,7 @@ try {
   qualification-model:
     image: relay-operations:local
     command: [node, bin/production-fixture.mjs]
-    environment: { INTEGRATION_FIXTURE: 'true' }
+    environment: { INTEGRATION_FIXTURE: 'true', PORT: '4320' }
     networks: [private]
     read_only: true
     cap_drop: [ALL]

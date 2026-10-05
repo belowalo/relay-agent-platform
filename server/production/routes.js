@@ -8,7 +8,7 @@ import { PlatformError } from '../foundation/errors.js';
 import { resourceId } from '../foundation/contracts.js';
 import { templates, nodeCatalog, toolCatalog, validateGraph } from '../catalog.js';
 import { setSessionCookie } from '../security/index.js';
-import { publicRow } from '../runtime/core.js';
+import { publicRow, RuntimeError } from '../runtime/core.js';
 import { registerConnectorRoutes } from '../connectors/routes.js';
 import { registerKnowledgeRoutes } from '../knowledge/routes.js';
 const uuid = () => crypto.randomUUID(),
@@ -169,19 +169,70 @@ export function registerProductionRoutes(
       res.status(201).json({ id: await newWorkspace(req.user, text.parse(req.body.name)) }),
     ),
   );
+  app.get(
+    '/api/account/security',
+    middleware.session,
+    route(async (req, res) => res.json(await security.identity.status(req.user.id))),
+  );
+  for (const action of ['setup', 'confirm', 'disable'])
+    app.post(
+      '/api/account/mfa/' + action,
+      middleware.session,
+      middleware.rate('login'),
+      route(async (req, res) => {
+        const session = req.cookies.relay_session;
+        let result;
+        if (action === 'setup')
+          result = await security.identity.setupMfa(session, req.body.password, req.requestId);
+        if (action === 'confirm')
+          result = await security.identity.confirmMfa(session, req.body.code, req.requestId);
+        if (action === 'disable') {
+          const changed = await security.identity.disableMfa(
+            session,
+            req.body.password,
+            req.body.code,
+            req.requestId,
+          );
+          setSessionCookie(res, changed);
+          result = { ok: true };
+        }
+        res.json(result);
+      }),
+    );
+  app.post(
+    '/api/account/password',
+    middleware.session,
+    middleware.rate('login'),
+    route(async (req, res) => {
+      const changed = await security.identity.changePassword(
+        req.cookies.relay_session,
+        req.body.current,
+        req.body.password,
+        req.body.code,
+        req.requestId,
+      );
+      setSessionCookie(res, changed);
+      res.json({ ok: true });
+    }),
+  );
   app.post(
     '/api/invitations/accept',
     middleware.session,
     route(async (req, res) => {
-      // Opaque invitations require the workspace supplied alongside the invitation; no global tenant scan.
-      const b = z.object({ token: z.string(), workspaceId: resourceId }).strict().parse(req.body);
+      const b = z
+        .object({ token: z.string(), workspaceId: resourceId.optional() })
+        .strict()
+        .parse(req.body);
+      const workspaceId = await security.identity.invitationWorkspace(req.user.id, b.token);
+      if (b.workspaceId && b.workspaceId !== workspaceId)
+        throw new PlatformError('FORBIDDEN', 'Invitation is no longer valid.');
       const ctx = {
-        workspaceId: b.workspaceId,
+        workspaceId,
         actor: { kind: 'user', id: req.user.id },
         requestId: req.requestId,
       };
       await security.membership.accept(ctx, b.token);
-      res.json({ workspaceId: b.workspaceId });
+      res.json({ workspaceId });
     }),
   );
   router.get('/catalog', (_req, res) =>
@@ -613,14 +664,42 @@ export function registerProductionRoutes(
     permission('membership.manage'),
     route(async (req, res) =>
       res.json(
-        await tx(req, (s) =>
-          s.all(
+        await tx(req, async (s) => ({
+          members: await s.all(
             'SELECT m.user_id AS id,m.role,a.name,a.email FROM relay.security_memberships m JOIN relay.security_accounts a ON a.id=m.user_id WHERE m.workspace_id=$1',
             [context(req).workspaceId],
           ),
-        ),
+          invitations: await s.all(
+            'SELECT id,email,role,expires_at FROM relay.security_invitations WHERE workspace_id=$1 AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>now()',
+            [context(req).workspaceId],
+          ),
+        })),
       ),
     ),
+  );
+  router.put(
+    '/members/:id',
+    permission('membership.manage'),
+    route(async (req, res) => {
+      await security.membership.change(context(req), req.params.id, req.body.role);
+      res.json({ ok: true });
+    }),
+  );
+  router.delete(
+    '/members/:id',
+    permission('membership.manage'),
+    route(async (req, res) => {
+      await security.membership.change(context(req), req.params.id);
+      res.json({ ok: true });
+    }),
+  );
+  router.delete(
+    '/invitations/:id',
+    permission('membership.manage'),
+    route(async (req, res) => {
+      await security.membership.revokeInvitation(context(req), req.params.id);
+      res.json({ ok: true });
+    }),
   );
   router.post(
     '/invitations',
@@ -658,6 +737,75 @@ export function registerProductionRoutes(
       ),
     ),
   );
+  router.get(
+    '/connectors',
+    permission('secret.manage'),
+    route(async (req, res) =>
+      res.json(
+        await tx(req, (s) =>
+          s.all(
+            'SELECT id,kind,config,generation,status,secret_ref IS NOT NULL AS has_credential FROM relay.connector_connections WHERE workspace_id=$1 ORDER BY updated_at DESC',
+            [context(req).workspaceId],
+          ),
+        ),
+      ),
+    ),
+  );
+  async function saveConnector(req, res, create) {
+    const b = z
+      .object({
+        kind: z.string().max(60),
+        config: z.record(z.string(), z.unknown()),
+        secret: z.string().max(65536).optional(),
+      })
+      .strict()
+      .parse(req.body);
+    assertNoInlineSecrets(b.config);
+    const ctx = context(req),
+      id = create ? uuid() : resourceId.parse(req.params.id);
+    let prior = create ? null : await connections.get(ctx, id);
+    if (create) await connections.save(ctx, id, { kind: b.kind, config: b.config });
+    let secretRef = prior?.secretRef;
+    if (b.secret) {
+      const version = await tx(
+        req,
+        async (s) =>
+          Number(
+            (
+              await s.one(
+                'SELECT coalesce(max(version),0) AS n FROM relay.security_credentials WHERE workspace_id=$1 AND connection_id=$2',
+                [ctx.workspaceId, id],
+              )
+            ).n,
+          ) + 1,
+      );
+      secretRef = { workspaceId: ctx.workspaceId, connectionId: id, version };
+      await security.secrets.store(ctx, secretRef, b.secret);
+    }
+    const saved = await connections.save(ctx, id, { kind: b.kind, config: b.config, secretRef });
+    if (b.secret && prior?.secretRef) await security.secrets.revoke(ctx, prior.secretRef);
+    res.status(create ? 201 : 200).json(saved);
+  }
+  router.post(
+    '/connectors',
+    permission('secret.manage'),
+    route((req, res) => saveConnector(req, res, true)),
+  );
+  router.put(
+    '/connectors/:id',
+    permission('secret.manage', 'connection'),
+    route((req, res) => saveConnector(req, res, false)),
+  );
+  router.delete(
+    '/connectors/:id',
+    permission('secret.manage', 'connection'),
+    route(async (req, res) => {
+      const c = await connections.get(context(req), req.params.id);
+      await connections.disconnect(context(req), c.id);
+      if (c.secretRef) await security.secrets.revoke(context(req), c.secretRef);
+      res.json({ ok: true });
+    }),
+  );
   registerConnectorRoutes(router, {
     contextFor: async (req) => context(req),
     connections,
@@ -687,6 +835,23 @@ export function registerProductionRoutes(
     }),
   );
   app.use((error, req, res, next) => {
+    if (error instanceof RuntimeError) {
+      const code = error.code.includes('CONFLICT')
+        ? 'CONFLICT'
+        : error.code.startsWith('INVALID')
+          ? 'VALIDATION_ERROR'
+          : error.code === 'BACKPRESSURE'
+            ? 'BUDGET_EXCEEDED'
+            : error.code;
+      const messages = {
+        CONFLICT: 'The decision or resource changed. Reload and review it again.',
+        VALIDATION_ERROR: 'Request validation failed.',
+        BUDGET_EXCEEDED: 'Workspace capacity is exhausted.',
+        FORBIDDEN: 'Permission is required.',
+        NOT_FOUND: 'Resource was not found.',
+      };
+      error = new PlatformError(code, messages[code] || 'The operation could not be completed.');
+    }
     if (error instanceof z.ZodError)
       error = new PlatformError('VALIDATION_ERROR', 'Request validation failed.');
     if (error?.code === '23505')

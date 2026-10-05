@@ -290,9 +290,11 @@ export function createRuntimeApi({
       ),
     );
   });
-  router.post('/schedules', async (req, res) =>
-    res.status(201).json({ id: await scheduler.create(req.context, req.body) }),
-  );
+  router.post('/schedules', async (req, res) => {
+    const body = { ...req.body };
+    body.versionId ||= await repository.publish(req.context, body.workflowId);
+    res.status(201).json({ id: await scheduler.create(req.context, body) });
+  });
   router.get('/schedules', async (req, res) =>
     res.json(
       await repository.tx(req.context, (s) =>

@@ -46,6 +46,7 @@ export async function grantProductionRoles(
     await pool.query(`GRANT SELECT,INSERT,UPDATE,DELETE ON relay.${table} TO ${id}`);
   await pool.query(`GRANT SELECT,INSERT ON relay.security_identity_audit TO ${id}`);
   await pool.query(`GRANT EXECUTE ON FUNCTION relay.identity_workspaces(text) TO ${id}`);
+  await pool.query(`GRANT EXECUTE ON FUNCTION relay.identity_invitation(text,text) TO ${id}`);
   await pool.query(
     `GRANT SELECT,INSERT,UPDATE,DELETE ON relay.security_rate_buckets TO ${limiter}`,
   );

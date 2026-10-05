@@ -3,7 +3,7 @@ import http from 'node:http';
 if (process.env.INTEGRATION_FIXTURE !== 'true') throw new Error('Disposable fixture flag required');
 const actions = [];
 const server = http.createServer(async (req, res) => {
-  if (req.url === '/health' || req.url === '/actions') {
+  if (req.url === '/health' || req.url === '/health/ready' || req.url === '/actions') {
     res.setHeader('content-type', 'application/json');
     return res.end(
       JSON.stringify(req.url === '/actions' ? { count: actions.length } : { ready: true }),

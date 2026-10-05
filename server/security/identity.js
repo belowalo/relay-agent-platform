@@ -135,6 +135,37 @@ export function createIdentityRepository({ pool, vault, sessionMs = 86400000, id
     return row;
   }
   return Object.freeze({
+    async status(userId) {
+      resourceId.parse(userId);
+      const r = (
+        await pool.query(
+          'SELECT a.mfa_enabled,(SELECT count(*)::int FROM relay.security_recovery_codes c WHERE c.user_id=a.id) AS remaining FROM relay.security_accounts a WHERE a.id=$1 AND a.disabled_at IS NULL',
+          [userId],
+        )
+      ).rows[0];
+      if (!r) throw new PlatformError('UNAUTHENTICATED', 'Sign in again.');
+      return {
+        mfaEnabled: r.mfa_enabled,
+        recoveryCodesRemaining: r.remaining,
+        sso: false,
+        passwordReset: false,
+      };
+    },
+    async invitationWorkspace(userId, token) {
+      resourceId.parse(userId);
+      z.string()
+        .regex(/^[\w-]{43}$/)
+        .parse(token);
+      const row = (
+        await pool.query('SELECT relay.identity_invitation($1,$2) AS workspace_id', [
+          userId,
+          tokenHash(token),
+        ])
+      ).rows[0];
+      if (!row?.workspace_id)
+        throw new PlatformError('FORBIDDEN', 'Invitation is no longer valid.');
+      return row.workspace_id;
+    },
     async workspaces(userId) {
       resourceId.parse(userId);
       return (await pool.query('SELECT * FROM relay.identity_workspaces($1)', [userId])).rows;

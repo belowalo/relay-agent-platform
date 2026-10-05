@@ -8,7 +8,11 @@ import { createSecretVault } from '../server/foundation/secrets.js';
 const command = process.argv[2] || 'start';
 try {
   if (command === 'import') {
-    if (!process.env.MIGRATION_DATABASE_URL || !process.argv.includes('--source'))
+    if (
+      !process.env.MIGRATION_DATABASE_URL ||
+      !process.env.ENCRYPTION_KEY ||
+      !process.argv.includes('--source')
+    )
       throw new Error('IMPORT_CONFIGURATION_REQUIRED');
     const source = process.argv[process.argv.indexOf('--source') + 1];
     const keyFile = process.argv.includes('--legacy-key-file')

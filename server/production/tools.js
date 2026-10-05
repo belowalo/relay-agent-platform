@@ -72,7 +72,7 @@ export function createProductionTools({ database, security, connections, outboun
         const live = await connections.get(c, connection.id);
         if (
           stableHash(live.config) !== stableHash(connection.config) ||
-          stableHash(live.secretRef) !== stableHash(connection.secretRef) ||
+          stableHash(live.secretRef || null) !== stableHash(connection.secretRef || null) ||
           live.generation !== connection.generation
         )
           deny();
@@ -110,6 +110,8 @@ export function createProductionTools({ database, security, connections, outboun
         'VALIDATION_ERROR',
         'Use a configured native connector for this tool type.',
       );
+    if (effect === 'write' && idempotency === 'read-only')
+      idempotency = tool.kind === 'file' ? 'provider-key' : 'none';
     return {
       effect,
       inputSchema,
