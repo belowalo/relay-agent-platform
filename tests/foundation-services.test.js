@@ -44,12 +44,15 @@ test(
     let appPool;
     let created = false;
     try {
-      await applyMigrations(admin);
+      // Foundation qualification must stay independent of runtime/domain migrations.
+      for (const entry of (await readMigrations()).filter((entry) => entry.name < '0100'))
+        await fs.writeFile(path.join(directory, entry.name), entry.sql);
+      await applyMigrations(admin, directory);
       assert.ok(
         (await admin.query("SELECT extversion FROM pg_extension WHERE extname='vector'")).rows[0]
           ?.extversion,
       );
-      assert.deepEqual(await applyMigrations(admin), []);
+      assert.deepEqual(await applyMigrations(admin, directory), []);
       await admin.query(`CREATE ROLE "${role}" LOGIN PASSWORD '${password}'`);
       created = true;
       await admin.query(`GRANT USAGE ON SCHEMA relay TO "${role}"`);
@@ -119,7 +122,7 @@ test(
       await application.transaction(context(a), (session) =>
         session.query('DELETE FROM relay.job_outbox WHERE id=$1', [first.id]),
       );
-      for (const entry of await readMigrations())
+      for (const entry of await readMigrations(directory))
         await fs.writeFile(path.join(directory, entry.name), entry.sql);
       await fs.writeFile(
         path.join(directory, '0002-failing-fixture.sql'),
@@ -131,7 +134,7 @@ test(
         null,
       );
       await fs.rm(path.join(directory, '0002-failing-fixture.sql'));
-      const firstMigration = (await readMigrations())[0];
+      const firstMigration = (await readMigrations(directory))[0];
       await fs.appendFile(path.join(directory, firstMigration.name), '\n-- checksum changed\n');
       await assert.rejects(applyMigrations(admin, directory), /history does not match/);
     } finally {
