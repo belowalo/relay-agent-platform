@@ -42,6 +42,8 @@ export function registerProductionRoutes(
     retrieve,
     modelCall,
     config,
+    quality,
+    publications,
   },
 ) {
   const route = (fn) => async (req, res, next) => {
@@ -600,16 +602,15 @@ export function registerProductionRoutes(
         .object({ name: text, text: z.string().max(2_000_000) })
         .strict()
         .parse(req.body);
-      res.status(201).json(
-        await pipeline.upsert(context(req), {
-          collectionId: req.params.id,
-          externalId: uuid(),
-          name: b.name,
-          text: b.text,
-          metadata: {},
-          access: { mode: 'workspace', principalIds: [] },
-        }),
-      );
+      const accepted = await pipeline.upsert(context(req), {
+        collectionId: req.params.id,
+        externalId: uuid(),
+        name: b.name,
+        text: b.text,
+        metadata: {},
+        access: { mode: 'workspace', principalIds: [] },
+      });
+      res.status(201).json({ ...accepted, id: accepted.sourceId });
     }),
   );
   const upload = multer({
@@ -623,20 +624,19 @@ export function registerProductionRoutes(
     upload,
     route(async (req, res) => {
       if (!req.file) throw new PlatformError('VALIDATION_ERROR', 'Choose a document file.');
-      res.status(201).json(
-        await pipeline.upload(
-          context(req),
-          {
-            collectionId: req.params.id,
-            externalId: uuid(),
-            name: req.file.originalname,
-            metadata: {},
-            access: { mode: 'workspace', principalIds: [] },
-          },
-          req.file.buffer,
-          req.file.mimetype,
-        ),
+      const accepted = await pipeline.upload(
+        context(req),
+        {
+          collectionId: req.params.id,
+          externalId: uuid(),
+          name: req.file.originalname,
+          metadata: {},
+          access: { mode: 'workspace', principalIds: [] },
+        },
+        req.file.buffer,
+        req.file.mimetype,
       );
+      res.status(201).json({ ...accepted, id: accepted.sourceId });
     }),
   );
   router.post(
@@ -806,6 +806,8 @@ export function registerProductionRoutes(
       res.json({ ok: true });
     }),
   );
+  quality?.register(router);
+  publications?.register(app, router);
   registerConnectorRoutes(router, {
     contextFor: async (req) => context(req),
     connections,

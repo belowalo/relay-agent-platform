@@ -21,7 +21,7 @@ const inputSchema = z
         z
           .string()
           .regex(
-            /^(application|workflow|run|document|collection|connection|connector):[\w-]{1,128}$/,
+            /^(application|workflow|run|document|collection|connection|connector|tool):[\w-]{1,128}$/,
           ),
       )
       .min(1)

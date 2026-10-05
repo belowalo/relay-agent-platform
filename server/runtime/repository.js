@@ -90,6 +90,7 @@ export function createRuntimeRepository(database, { leaseMs = 30000, snapshotToo
       input,
       workflowId = null,
       versionId = null,
+      applicationId = null,
       mode = 'live',
       parentId = null,
       childKey = null,
@@ -109,7 +110,7 @@ export function createRuntimeRepository(database, { leaseMs = 30000, snapshotToo
     if (Number(count.n) >= Number(cap.max_queued)) fail('BACKPRESSURE');
     const id = uuid();
     await s.query(
-      "INSERT INTO relay.runs(id,workspace_id,workflow_id,version_id,graph,input,status,mode,parent_id,child_key,created_at,actor,request_id,limits) VALUES($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9,$10,$11,$12,$13)",
+      "INSERT INTO relay.runs(id,workspace_id,workflow_id,version_id,graph,input,status,mode,parent_id,child_key,created_at,actor,request_id,limits,application_id) VALUES($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9,$10,$11,$12,$13,$14)",
       [
         id,
         s.context.workspaceId,
@@ -124,6 +125,7 @@ export function createRuntimeRepository(database, { leaseMs = 30000, snapshotToo
         json(s.context.actor),
         s.context.requestId,
         json({ ...limits, depth }),
+        applicationId,
       ],
     );
     for (const n of graph.nodes)
@@ -467,7 +469,7 @@ export function createRuntimeRepository(database, { leaseMs = 30000, snapshotToo
       });
     },
     child(context, lease, node, graph, input, index, limits) {
-      return fenced(context, lease, async (s) => {
+      return fenced(context, lease, async (s, parent) => {
         const key = node.id + ':' + index;
         let r = await s.one(
           'SELECT * FROM relay.runs WHERE workspace_id=$1 AND parent_id=$2 AND child_key=$3',
@@ -478,6 +480,7 @@ export function createRuntimeRepository(database, { leaseMs = 30000, snapshotToo
             graph,
             input,
             parentId: lease.runId,
+            applicationId: parent.application_id,
             childKey: key,
             limits,
             depth: (limits.depth || 0) + 1,

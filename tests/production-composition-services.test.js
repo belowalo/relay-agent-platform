@@ -346,6 +346,81 @@ test(
         await appPorts.close();
       }
       evidence.checks.push('foreign tenant HTTP denial and viewer execution denial');
+      const prompt = await request(base + '/prompts', {
+        name: 'Approved prompt',
+        content: 'Return a short answer.',
+        description: '',
+      });
+      assert.equal(prompt.r.status, 201);
+      const prompts = (await request(base + '/prompts')).data;
+      assert.equal(prompts[0].content, 'Return a short answer.');
+      assert.equal(
+        (
+          await request(
+            base + '/prompts/' + prompt.data.id,
+            { name: 'Changed', content: 'Changed', revision: 99 },
+            'PUT',
+          )
+        ).r.status,
+        409,
+      );
+      const dataset = await request(base + '/datasets', {
+        name: 'Protocol outcomes',
+        cases: [{ input: 'A', expected: 'Synthetic fixture answer' }, { input: 'B' }],
+      });
+      assert.equal(dataset.r.status, 201);
+      const evaluation = await request(base + '/evaluations', {
+        name: 'Observed outputs',
+        workflowId: wf.data.id,
+        datasetId: dataset.data.id,
+        mode: 'live',
+        rules: [{ type: 'success' }],
+      });
+      assert.equal(evaluation.r.status, 202, JSON.stringify(evaluation.data));
+      const ev = await until(async () => {
+        const e = (await request(base + '/evaluations/' + evaluation.data.id)).data;
+        return e.status === 'completed' && e;
+      });
+      assert.equal(ev.summary.passed, 2);
+      assert.equal(ev.summary.synthetic, false);
+      evidence.checks.push(
+        'production prompt history, stale update denial and durable deterministic evaluation',
+      );
+      const published = await request(base + '/applications', {
+        name: 'Private immutable API',
+        workflowId: wf.data.id,
+        settings: { public: false, mode: 'preview' },
+      });
+      assert.equal(published.r.status, 201, JSON.stringify(published.data));
+      async function application(path, body, token = published.data.token) {
+        const r = await fetch(api + path, {
+          method: body === undefined ? 'GET' : 'POST',
+          headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        });
+        return { r, data: await r.json() };
+      }
+      const appPath = '/api/apps/' + published.data.id;
+      assert.equal((await application(appPath + '/invoke', { input: 'denied' }, '')).r.status, 401);
+      const appRun = await application(appPath + '/invoke', { input: 'No paid model in preview' });
+      assert.equal(appRun.r.status, 202, JSON.stringify(appRun.data));
+      const appDone = await until(async () => {
+        const d = (await application(appPath + '/runs/' + appRun.data.id)).data;
+        return d.status === 'completed' && d;
+      });
+      assert.match(appDone.output, /Development preview/);
+      assert.equal((await application(appPath + '/runs/' + live.data.id)).r.status, 404);
+      assert.equal(
+        (await request(base + '/applications/' + published.data.id + '/rotate', {})).r.status,
+        200,
+      );
+      assert.equal(
+        (await application(appPath + '/invoke', { input: 'old key denied' })).r.status,
+        401,
+      );
+      evidence.checks.push(
+        'private frozen publication, async scoped invocation, unrelated run denial and immediate credential revocation',
+      );
       t.diagnostic(JSON.stringify(evidence));
     } finally {
       if (http) {

@@ -27,6 +27,8 @@ import { createProductionTools } from './tools.js';
 import { registerProductionRoutes, assertNoInlineSecrets } from './routes.js';
 import { createProductionParser } from './parser.js';
 import { startOperationsSampler } from '../observability/sampler.js';
+import { createProductionQuality } from './quality.js';
+import { createProductionPublications } from './publications.js';
 const parse = (value) => (typeof value === 'string' ? JSON.parse(value) : value);
 export function runtimePermission(operation) {
   if (['recover', 'reconcile', 'admin'].includes(operation.operation)) return 'workspace.manage';
@@ -121,6 +123,13 @@ export async function createRuntimePorts({ config, env = process.env }) {
           ctx.workspaceId,
           resource.id,
         ]);
+        if (
+          r &&
+          resource.kind === 'run' &&
+          ctx.actor.kind === 'application' &&
+          parse(r.actor)?.id !== ctx.actor.id
+        )
+          return null;
         return r ? { workspaceId: r.workspace_id, applicationId: r.application_id } : null;
       });
     }
@@ -163,7 +172,19 @@ export async function createRuntimePorts({ config, env = process.env }) {
       authorize: authorizeConnector,
       validateConfig: validateConnectorConfig,
     });
-    const knowledgeSecurity = createKnowledgeSecurity(security);
+    const knowledgeSecurity = createKnowledgeSecurity(security, {
+      async documentScope(ctx) {
+        if (ctx.actor.kind === 'user') return { principalIds: ['user:' + ctx.actor.id] };
+        const grant = await security.tokens.lookup(ctx);
+        if (!grant) throw new PlatformError('FORBIDDEN', 'Document scope is unavailable.');
+        return {
+          principalIds: ['application:' + ctx.actor.id],
+          sourceIds: grant.resources
+            .filter((v) => v.startsWith('document:'))
+            .map((v) => v.slice(9)),
+        };
+      },
+    });
     blobs = createProductionBlobs(env, security);
     embeddings = createLocalEmbeddings({
       cacheDir: env.EMBEDDING_CACHE_DIR || '/models',
@@ -211,7 +232,7 @@ export async function createRuntimePorts({ config, env = process.env }) {
           : {}),
       },
     });
-    let runtimeRepository;
+    let quality;
     async function modelCall(ctx, { config: options, messages, tools = [], signal, meteredCall }) {
       await security.authorize(ctx, 'run.execute');
       const connection = await database.transaction(ctx, (s) =>
@@ -421,7 +442,8 @@ export async function createRuntimePorts({ config, env = process.env }) {
           );
       },
       registerRoutes(app, { repository, router, scheduler }) {
-        runtimeRepository = repository;
+        quality = createProductionQuality({ database, security, repository });
+        const publications = createProductionPublications({ database, security, repository });
         registerProductionRoutes(app, {
           router,
           repository,
@@ -437,6 +459,8 @@ export async function createRuntimePorts({ config, env = process.env }) {
           retrieve,
           modelCall,
           config,
+          quality,
+          publications,
         });
         registerOperations(app, { health, telemetry, metricsToken: env.METRICS_TOKEN });
         health.start();
@@ -454,6 +478,7 @@ export async function createRuntimePorts({ config, env = process.env }) {
         'source.ingest': (job) => pipeline.handleJob(job, { resolveContext: resolveIngestion }),
       },
       async maintenance(ctx) {
+        await quality?.pump(ctx);
         await database.transaction(ctx, (s) =>
           s.query(
             `UPDATE relay.job_outbox o SET state='pending',available_at=now(),lease_owner=NULL,lease_until=NULL

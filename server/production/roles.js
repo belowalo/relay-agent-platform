@@ -30,6 +30,7 @@ export async function grantProductionRoles(
     await pool.query(`GRANT SELECT,INSERT,UPDATE,DELETE ON relay.${identifier(relname)} TO ${app}`);
   }
   await pool.query(`GRANT SELECT ON relay.schema_migrations TO ${app}`);
+  await pool.query(`GRANT EXECUTE ON FUNCTION relay.application_tenant(text,text) TO ${app}`);
   await pool.query(`GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA relay TO ${app}`);
   await pool.query(
     `GRANT SELECT(id,email,name,disabled_at,mfa_enabled) ON relay.security_accounts TO ${app}`,
