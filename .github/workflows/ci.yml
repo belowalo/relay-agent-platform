@@ -17,12 +17,17 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run foundation:types
+      - run: npm run knowledge:types
+      - run: npm run connectors:types
+      - run: npm run test:acceptance
+      - run: npm run test:failure
+      - run: npm run test:load:smoke
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
       - run: npm run format:check
   foundation-services:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -45,6 +50,11 @@ jobs:
     env:
       FOUNDATION_TEST_DATABASE_URL: postgresql://postgres:foundation-test-only@127.0.0.1:5432/relay_foundation_test
       FOUNDATION_TEST_REDIS_URL: redis://127.0.0.1:6379/0
+      SECURITY_TEST_DATABASE_URL: postgresql://postgres:foundation-test-only@127.0.0.1:5432/relay_security_test
+      KNOWLEDGE_TEST_DATABASE_URL: postgresql://postgres:foundation-test-only@127.0.0.1:5432/relay_knowledge_test
+      INTEGRATION_S3_ENDPOINT: http://127.0.0.1:19000
+      INTEGRATION_S3_ACCESS_KEY: integration-fixture-access
+      INTEGRATION_S3_SECRET_KEY: integration-fixture-secret-only
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -53,3 +63,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:services
+      - name: Start disposable integration services
+        run: |
+          node bin/prepare-test-services.mjs
+          docker run -d --name relay-integration-s3 -p 127.0.0.1:19000:9000 -e RUSTFS_ACCESS_KEY=integration-fixture-access -e RUSTFS_SECRET_KEY=integration-fixture-secret-only rustfs/rustfs@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c /data
+          node bin/provision-embeddings.mjs data/models
+      - run: npm run test:security-services
+      - run: npm run test:knowledge:services
+      - run: npm run test:production-services

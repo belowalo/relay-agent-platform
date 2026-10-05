@@ -135,6 +135,10 @@ export function createIdentityRepository({ pool, vault, sessionMs = 86400000, id
     return row;
   }
   return Object.freeze({
+    async workspaces(userId) {
+      resourceId.parse(userId);
+      return (await pool.query('SELECT * FROM relay.identity_workspaces($1)', [userId])).rows;
+    },
     async externalLogin({ issuer, subject }, requestId) {
       z.string().max(2048).parse(issuer);
       z.string().min(1).max(255).parse(subject);

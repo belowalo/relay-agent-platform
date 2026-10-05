@@ -197,11 +197,24 @@ export function RunDetails({
   async function decide(approved: boolean) {
     setDecisionBusy(true);
     try {
-      await api(`${base}/runs/${run.id}/approve`, {
-        nodeId: step.node_id,
-        approved,
-        ...(approved ? {} : { feedback: 'Rejected in run inspector' }),
-      });
+      if (run.runtimeProfile === 'production') {
+        const approval = run.approvals?.find(
+          (a: any) => a.node_id === step.node_id && a.status === 'pending',
+        );
+        if (!approval)
+          throw new Error(
+            'The pending approval changed. Reload this run and review its arguments.',
+          );
+        await api(`${base}/approvals/${approval.id}/decision`, {
+          argumentHash: approval.argument_hash,
+          approved,
+        });
+      } else
+        await api(`${base}/runs/${run.id}/approve`, {
+          nodeId: step.node_id,
+          approved,
+          ...(approved ? {} : { feedback: 'Rejected in run inspector' }),
+        });
       reload();
     } catch (error) {
       notify((error as Error).message, true);
@@ -303,7 +316,7 @@ export function RunDetails({
       <div className="run-stats">
         <span>
           <Zap size={15} />
-          {(run.usage.inputTokens || 0) + (run.usage.outputTokens || 0)} tokens
+          {run.usage.tokens ?? (run.usage.inputTokens || 0) + (run.usage.outputTokens || 0)} tokens
         </span>
         <span>
           {run.steps.filter((s: any) => s.status === 'completed').length}/{run.steps.length} steps

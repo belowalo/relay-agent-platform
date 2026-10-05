@@ -20,6 +20,7 @@ export function createKnowledgePipeline({
   embeddings,
   ocr,
   transcribe,
+  parse = parseFile,
   budgets = limits,
   chunking,
 } = {}) {
@@ -211,7 +212,7 @@ export function createKnowledgePipeline({
               'VALIDATION_ERROR',
               'Blob integrity failed; upload the original file again.',
             );
-          extraction = await parseFile(bytes, input.name, {
+          extraction = await parse(bytes, input.name, {
             signal: combined,
             ocr,
             transcribe: transcribe

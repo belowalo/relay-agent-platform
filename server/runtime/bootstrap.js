@@ -24,8 +24,10 @@ export async function startProduction({
   }
   if (!ports.authenticate || !ports.authorize || !ports.usage) fail('MISSING_RUNTIME_PORTS');
   ports = { ...ports, telemetry: bestEffortTelemetry(ports.telemetry) };
-  const database = createPostgresDatabase(config),
-    queue = createJobQueue(config, { onError: (code) => ports.telemetry?.event(code, {}) });
+  const database = ports.database || createPostgresDatabase(config),
+    queue =
+      ports.queue ||
+      createJobQueue(config, { onError: (code) => ports.telemetry?.event(code, {}) });
   let discovery,
     transport,
     server,
@@ -52,6 +54,7 @@ export async function startProduction({
     await queue.probe();
     const repository = createRuntimeRepository(database, {
       leaseMs: Number(env.RUNTIME_LEASE_MS || 30000),
+      snapshotTool: ports.snapshotTool,
     });
     const scheduler = createRuntimeScheduler({ repository, authorize: ports.authorize });
     const ready = async () => {
@@ -101,12 +104,18 @@ export async function startProduction({
         ticking = true;
         try {
           await dispatcher.tick();
-          for (const workspaceId of await listWorkspaces())
+          for (const workspaceId of await listWorkspaces()) {
+            await ports.maintenance?.({
+              workspaceId,
+              actor: { kind: 'service', id: 'runtime-dispatcher' },
+              requestId: 'domain-maintenance',
+            });
             await scheduler.tick({
               workspaceId,
               actor: { kind: 'service', id: 'scheduler' },
               requestId: 'scheduler-tick',
             });
+          }
         } catch {
           ports.telemetry?.event('runtime.maintenance.failed', {});
         } finally {
@@ -122,9 +131,11 @@ export async function startProduction({
       ready,
       draining: () => closed,
       registerRoutes: ports.registerRoutes,
+      installMiddleware: ports.installMiddleware,
+      validateWorkflow: ports.validateWorkflow,
       usage: ports.usage,
     });
-    if (listen && config.role === 'api')
+    if (listen)
       server = await new Promise((resolve, reject) => {
         const http = app.listen(config.port, config.host, () => resolve(http));
         http.on('error', reject);
@@ -132,6 +143,7 @@ export async function startProduction({
     async function close() {
       if (closing) return closing;
       closed = true;
+      ports.drain?.();
       clearInterval(timer);
       closing = (async () => {
         if (server)
@@ -156,6 +168,7 @@ export async function startProduction({
     await queue.close().catch(() => {});
     await discovery?.end().catch(() => {});
     await database.close().catch(() => {});
+    await ports.close?.().catch(() => {});
     throw e;
   }
 }

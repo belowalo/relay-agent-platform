@@ -15,6 +15,7 @@ export function createPostgresDatabase(config, { pool } = {}) {
   // An idle connection error must not become an uncaught EventEmitter exception.
   // Connection errors are surfaced through probe/queries without logging secret-bearing messages.
   connection.on('error', () => {});
+  let closing;
   async function transaction(context, callback) {
     context = tenantContextSchema.parse(context);
     const client = await connection.connect();
@@ -62,6 +63,6 @@ export function createPostgresDatabase(config, { pool } = {}) {
           'The application database role must not own Relay tables or bypass row security.',
         );
     },
-    close: () => connection.end(),
+    close: () => (closing ||= connection.end()),
   });
 }

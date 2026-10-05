@@ -10,6 +10,8 @@ export function createRuntimeApi({
   ready = async () => true,
   draining = () => false,
   registerRoutes,
+  installMiddleware,
+  validateWorkflow,
   usage,
 }) {
   if (typeof authenticate !== 'function' || typeof authorize !== 'function')
@@ -18,6 +20,7 @@ export function createRuntimeApi({
   app.disable('x-powered-by');
   app.use(helmet());
   app.use(express.json({ limit: '3mb' }));
+  installMiddleware?.(app);
   app.get('/api/health', async (req, res) =>
     res
       .status((await ready()) && !draining() ? 200 : 503)
@@ -53,9 +56,10 @@ export function createRuntimeApi({
       ),
     ),
   );
-  router.post('/workflows', async (req, res) =>
-    res.status(201).json({ id: await repository.createWorkflow(req.context, req.body) }),
-  );
+  router.post('/workflows', async (req, res) => {
+    validateWorkflow?.(req.body.graph);
+    res.status(201).json({ id: await repository.createWorkflow(req.context, req.body) });
+  });
   router.get('/workflows/:id', async (req, res) => {
     const workflow = await repository.tx(req.context, (s) =>
       s.one('SELECT * FROM relay.workflows WHERE id=$1 AND workspace_id=$2', [
@@ -67,6 +71,7 @@ export function createRuntimeApi({
     res.json(workflow);
   });
   router.put('/workflows/:id', async (req, res) => {
+    validateWorkflow?.(req.body.graph);
     res.json(await repository.updateWorkflow(req.context, req.params.id, req.body));
   });
   router.post('/workflows/:id/publish', async (req, res) =>
@@ -82,9 +87,11 @@ export function createRuntimeApi({
       ),
     ),
   );
-  router.post('/runs', async (req, res) =>
-    res.status(202).json({ id: await repository.createRun(req.context, req.body) }),
-  );
+  router.post('/runs', async (req, res) => {
+    const body = { ...req.body };
+    body.versionId ||= await repository.publish(req.context, body.workflowId);
+    res.status(202).json({ id: await repository.createRun(req.context, body) });
+  });
   router.get('/runs', async (req, res) =>
     res.json(
       await repository.tx(req.context, (s) =>
@@ -98,14 +105,81 @@ export function createRuntimeApi({
   router.get('/runs/:id', async (req, res) => {
     const run = await repository.getRun(req.context, req.params.id);
     if (!run) fail('NOT_FOUND');
+    const approvals = await repository.tx(req.context, (s) =>
+      s.all(
+        "SELECT a.id,a.argument_hash,a.arguments AS input,a.status,s.node_id,t.name AS tool_name FROM relay.runtime_approvals a JOIN relay.steps s ON s.id=a.step_id AND s.workspace_id=a.workspace_id LEFT JOIN relay.actions action ON action.id=a.action_id LEFT JOIN relay.tools t ON t.id=action.tool_id AND t.workspace_id=a.workspace_id WHERE a.workspace_id=$1 AND a.run_id=$2 AND a.status='pending' ORDER BY a.created_at",
+        [req.context.workspaceId, run.id],
+      ),
+    );
+    const accounting = usage?.report
+      ? await repository.tx(req.context, (s) =>
+          s.one(
+            "SELECT coalesce(sum(tokens) FILTER(WHERE status='settled'),0)::text AS tokens,sum(cost_micros) FILTER(WHERE status='settled')::text AS cost,count(*) FILTER(WHERE status='settled' AND cost_micros IS NULL)::int AS unknown_cost_calls,coalesce(sum(maximum_tokens) FILTER(WHERE status IN('reserved','uncertain')),0)::text AS reserved_tokens FROM relay.security_usage WHERE workspace_id=$1 AND run_id=$2",
+            [req.context.workspaceId, run.id],
+          ),
+        )
+      : null;
     res.json({
       ...run,
+      runtimeProfile: 'production',
+      events: (await repository.events(req.context, run.id)).map(publicRow),
+      approvals: approvals.map(publicRow),
+      ...(accounting
+        ? {
+            usage: {
+              tokens: Number(accounting.tokens),
+              reservedTokens: Number(accounting.reserved_tokens),
+              estimatedCost:
+                accounting.unknown_cost_calls || accounting.cost === null
+                  ? null
+                  : Number(accounting.cost) / 1_000_000,
+              unknownCostCalls: accounting.unknown_cost_calls,
+            },
+          }
+        : {}),
       steps: (await repository.getSteps(req.context, run.id)).map(publicRow),
     });
   });
   router.get('/runs/:id/events', async (req, res) => {
-    const after = Number(req.query.after || 0);
+    let after = Number(req.query.after || req.headers['last-event-id'] || 0);
     if (!Number.isSafeInteger(after) || after < 0) fail('VALIDATION_ERROR');
+    if ((req.headers.accept || '').includes('text/event-stream')) {
+      res.set({
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'X-Accel-Buffering': 'no',
+      });
+      res.flushHeaders();
+      let stopped = false,
+        ticking = false;
+      const end = () => {
+        stopped = true;
+        clearInterval(timer);
+        res.end();
+      };
+      const tick = async () => {
+        if (stopped || ticking) return;
+        ticking = true;
+        try {
+          const ctx = await authenticate(req);
+          if (!(await authorize(ctx, { operation: 'api', method: 'GET', path: '/runs' })))
+            return end();
+          for (const event of await repository.events(ctx, req.params.id, after)) {
+            after = Number(event.sequence);
+            res.write(`id: ${after}\ndata: ${JSON.stringify(publicRow(event))}\n\n`);
+          }
+          res.write(': heartbeat\n\n');
+        } catch {
+          end();
+        } finally {
+          ticking = false;
+        }
+      };
+      const timer = setInterval(tick, 1000);
+      res.once('close', end);
+      tick();
+      return;
+    }
     res.json(await repository.events(req.context, req.params.id, after));
   });
   router.post('/runs/:id/cancel', async (req, res) => {
@@ -259,7 +333,7 @@ export function createRuntimeApi({
     res.json({ ok: true });
   });
   app.use('/api/w/:wid', router);
-  registerRoutes?.(app, { repository, scheduler });
+  registerRoutes?.(app, { repository, scheduler, router });
   app.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
     const code = safeCode(error, 'INTERNAL_ERROR');

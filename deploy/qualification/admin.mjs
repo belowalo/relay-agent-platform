@@ -46,6 +46,7 @@ try {
       "CREATE POLICY fixture_workspace ON relay.operations_fixture USING(workspace_id=nullif(current_setting('relay.workspace_id',true),'')) WITH CHECK(workspace_id=nullif(current_setting('relay.workspace_id',true),''))",
     );
     console.log(JSON.stringify({ migrated: true }));
+    await pool.query('GRANT SELECT ON relay.schema_migrations TO relay_app; GRANT SELECT,INSERT,UPDATE,DELETE ON relay.operations_fixture,relay.job_outbox TO relay_app;');
   }
 } finally {
   await pool.end();

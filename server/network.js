@@ -156,7 +156,7 @@ export async function safeFetch(value, options = {}, policy = false) {
   throw new Error('Too many redirects');
 }
 export async function responseText(response, max = 2_000_000) {
-  if (!Number.isSafeInteger(max) || max < 1 || max > 10_000_000)
+  if (!Number.isSafeInteger(max) || max < 1 || max > 32 * 1024 * 1024)
     throw new Error('Invalid response limit');
   if (!response.body) return '';
   const reader = response.body.getReader(),

@@ -46,6 +46,11 @@ test(
         'INSERT INTO relay.security_accounts(id,email,name,password_hash) VALUES($1,$2,$3,$4)',
         [userId, userId + '@relay.test', 'Fixture', 'unused-test-digest'],
       );
+      await admin.query('INSERT INTO relay.workspaces(id,name,created_at) VALUES($1,$2,$3)', [
+        workspaceId,
+        'Security fixture',
+        new Date().toISOString(),
+      ]);
       await admin.query('INSERT INTO relay.security_workspaces(workspace_id) VALUES($1)', [
         workspaceId,
       ]);
@@ -140,6 +145,7 @@ test(
       ])
         await admin.query(`DELETE FROM relay.${table} WHERE workspace_id=$1`, [workspaceId]);
       await admin.query('DELETE FROM relay.security_accounts WHERE id=$1', [userId]);
+      await admin.query('DELETE FROM relay.workspaces WHERE id=$1', [workspaceId]);
       if (created) {
         await admin.query(`DROP OWNED BY "${role}"`);
         await admin.query(`DROP ROLE "${role}"`);

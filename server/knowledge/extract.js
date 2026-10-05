@@ -72,6 +72,12 @@ async function isolated(buffer, extension, budgets, signal) {
     stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
     serialization: 'advanced',
     windowsHide: true,
+    env: {
+      PATH: process.env.PATH,
+      SystemRoot: process.env.SystemRoot,
+      TMP: process.env.TMP,
+      TEMP: process.env.TEMP,
+    },
   });
   try {
     return await new Promise((resolve, reject) => {

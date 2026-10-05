@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import pg from 'pg';
 import { startProduction } from '../server/runtime/bootstrap.js';
 import { importToPostgres } from '../server/runtime/import.js';
+import { createIntegratedImport } from '../server/production/import.js';
+import { createSecretVault } from '../server/foundation/secrets.js';
 const command = process.argv[2] || 'start';
 try {
   if (command === 'import') {
@@ -19,6 +21,14 @@ try {
           await importToPostgres(pool, source, {
             dryRun: !process.argv.includes('--apply'),
             legacyKey: keyFile ? fs.readFileSync(keyFile) : undefined,
+            integrate: process.env.ENCRYPTION_KEY
+              ? createIntegratedImport(
+                  createSecretVault(
+                    { [process.env.ENCRYPTION_KEY_ID || 'primary']: process.env.ENCRYPTION_KEY },
+                    process.env.ENCRYPTION_KEY_ID || 'primary',
+                  ),
+                )
+              : undefined,
           }),
         ),
       );

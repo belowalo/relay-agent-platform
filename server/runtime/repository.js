@@ -13,7 +13,7 @@ import {
   boundOutput,
 } from './core.js';
 
-export function createRuntimeRepository(database, { leaseMs = 30000 } = {}) {
+export function createRuntimeRepository(database, { leaseMs = 30000, snapshotTool } = {}) {
   if (!Number.isInteger(leaseMs) || leaseMs < 200 || leaseMs > 120000) fail('INVALID_LEASE');
   const tx = (context, fn) => database.transaction(tenantContextSchema.parse(context), fn);
   const scoped = (s, table, id, lock = '') =>
@@ -59,13 +59,17 @@ export function createRuntimeRepository(database, { leaseMs = 30000 } = {}) {
     const result = structuredClone(graph);
     for (const node of result.nodes) {
       const c = (node.data.config ||= {});
+      delete c.toolSnapshots;
+      delete c.toolSnapshot;
+      delete c.graphSnapshot;
       if (['tool', 'agent', 'orchestrator'].includes(node.data.kind)) {
         const ids = node.data.kind === 'tool' ? [c.toolId].filter(Boolean) : c.toolIds || [];
         const tools = [];
         for (const id of ids) {
           const tool = await scoped(s, 'tools', id);
           if (!tool) fail('TOOL_NOT_FOUND');
-          tools.push({ ...tool, config: decode(tool.config) });
+          const frozen = { ...tool, config: decode(tool.config) };
+          tools.push(snapshotTool ? await snapshotTool(s, frozen) : frozen);
         }
         if (node.data.kind === 'tool' && tools.length) c.toolSnapshot = tools[0];
         else if (tools.length) c.toolSnapshots = tools;

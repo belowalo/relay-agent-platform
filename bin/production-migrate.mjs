@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import pg from 'pg';
 import { applyMigrations } from '../server/foundation/migrations.js';
+import { grantProductionRoles } from '../server/production/roles.js';
 try {
   const pool = new pg.Pool({
     host: process.env.PGHOST,
@@ -12,6 +13,8 @@ try {
   pool.on('error', () => {});
   try {
     console.log(JSON.stringify({ applied: await applyMigrations(pool) }));
+    await grantProductionRoles(pool);
+    console.log(JSON.stringify({ rolesConfigured: true }));
   } finally {
     await pool.end();
   }

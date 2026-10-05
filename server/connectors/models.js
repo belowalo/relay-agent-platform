@@ -461,6 +461,7 @@ export function createModelAdapter(provider, { authorize, secrets, outbound }) {
         signal,
         onToken,
         onProgress,
+        fetchImpl: outbound?.fetch || safeFetch,
       });
     },
   };

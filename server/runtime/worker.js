@@ -73,6 +73,8 @@ export function createRuntimeWorker({
   async function toolCall(ctx, tool, args, checkpoint, callKey) {
     if (checkpoint.reservationId) fail('USAGE_RECONCILIATION_REQUIRED');
     await permitted(ctx.context, ctx.run, ctx.signal);
+    if (ctx.run.mode === 'preview')
+      return { developmentPreview: true, toolId: tool.id, input: args };
     await repository.assertLease(ctx.context, ctx.lease);
     if (!tools?.describe || !tools?.invoke) fail('TOOL_PORT_UNAVAILABLE');
     const descriptor = await tools.describe(ctx.context, tool);
@@ -175,6 +177,17 @@ export function createRuntimeWorker({
     }
   }
   async function agent(ctx, c, input, orchestrator = false) {
+    if (ctx.run.mode === 'preview') {
+      if (orchestrator)
+        return {
+          plan: 'Development preview',
+          context: input,
+          assignments: ctx.graph.edges
+            .filter((e) => e.source === ctx.node.id)
+            .map((e) => ({ nodeId: e.target, task: input })),
+        };
+      return 'Development preview: ' + stringify(input);
+    }
     if (!model?.call) fail('MODEL_PORT_UNAVAILABLE');
     let cp = decode(ctx.step.checkpoint) || {};
     if (cp.reservationId) fail('USAGE_RECONCILIATION_REQUIRED');
@@ -291,7 +304,7 @@ export function createRuntimeWorker({
           }
         };
         let calls = 0;
-        result = await model.call(ctx.context, {
+        const request = {
           config: c,
           messages,
           tools: assignedTools,
@@ -301,8 +314,12 @@ export function createRuntimeWorker({
             calls++;
             return meteredCall(req, fn);
           },
-        });
-        if (!calls) fail('UNMETERED_MODEL');
+        };
+        result =
+          c.knowledgeIds?.length && knowledge?.answer
+            ? await knowledge.answer(ctx.context, { ...request, question: stringify(task) })
+            : await model.call(ctx.context, request);
+        if (!calls && !(result.grounded && result.verifiedNoEvidence)) fail('UNMETERED_MODEL');
         boundOutput(result, ctx.limits);
         cp = {
           round,
@@ -360,7 +377,15 @@ export function createRuntimeWorker({
         await repository.checkpoint(ctx.context, ctx.lease, ctx.step.id, cp);
         continue;
       }
-      let output = result.text;
+      let output = result.grounded
+        ? {
+            text: result.text,
+            citations: result.citations,
+            insufficient: result.insufficient,
+            conflict: result.conflict,
+            diagnostics: result.diagnostics,
+          }
+        : result.text;
       if (orchestrator || c.outputSchema) {
         try {
           output = JSON.parse(output.replace(/^```(?:json)?\s*|\s*```$/g, ''));

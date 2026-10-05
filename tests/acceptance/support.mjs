@@ -173,6 +173,17 @@ export async function providerFixture() {
       } else {
         emit({ choices: [{ delta: { content: 'Synthetic fixture answer' } }] });
       }
+      emit({
+        choices: [
+          {
+            delta: {},
+            finish_reason:
+              body.tools?.length && !body.messages?.some((m) => m.role === 'tool')
+                ? 'tool_calls'
+                : 'stop',
+          },
+        ],
+      });
       emit({ choices: [], usage: { prompt_tokens: 20, completion_tokens: 8 } });
       res.end('data: [DONE]\n\n');
     };

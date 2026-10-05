@@ -15,6 +15,7 @@ export function createJobQueue(config, { onError = () => {} } = {}) {
   const queue = new Queue('jobs', { connection: producerConnection, prefix: config.queuePrefix });
   queue.on('error', () => onError('queue.producer'));
   const workers = new Set();
+  let closing;
   async function bounded(operation, milliseconds = config.databaseTimeoutMs) {
     let timer;
     try {
@@ -48,6 +49,11 @@ export function createJobQueue(config, { onError = () => {} } = {}) {
       // PG outbox recovery owns redelivery. Queue completion is not durable business state.
       await bounded(async () => {
         await queue.waitUntilReady();
+        if (job.kind === 'source.ingest') {
+          const previous = await queue.getJob(job.id);
+          if (previous && ['completed', 'failed'].includes(await previous.getState()))
+            await previous.remove();
+        }
         await queue.add(job.kind, job, {
           jobId: job.id,
           attempts: 1,
@@ -61,6 +67,17 @@ export function createJobQueue(config, { onError = () => {} } = {}) {
       return bounded(async () => {
         await queue.waitUntilReady();
         return (await producerConnection.ping()) === 'PONG';
+      });
+    },
+    async stats() {
+      return bounded(async () => {
+        const counts = await queue.getJobCounts('waiting', 'active', 'delayed');
+        const oldest = (await queue.getJobs(['waiting'], 0, 0, true))[0];
+        return {
+          waiting: counts.waiting + counts.delayed,
+          active: counts.active,
+          oldestCreatedAt: oldest ? new Date(oldest.timestamp).toISOString() : null,
+        };
       });
     },
     createWorker(handler) {
@@ -105,15 +122,19 @@ export function createJobQueue(config, { onError = () => {} } = {}) {
       return handle;
     },
     async close() {
-      const results = await Promise.allSettled([...workers].map((worker) => worker.close()));
-      producerConnection.disconnect();
-      try {
-        await queue.close();
-      } finally {
+      if (closing) return closing;
+      closing = (async () => {
+        const results = await Promise.allSettled([...workers].map((worker) => worker.close()));
         producerConnection.disconnect();
-      }
-      if (results.some((result) => result.status === 'rejected'))
-        throw new PlatformError('DEPENDENCY_UNAVAILABLE', 'Worker drain deadline exceeded.');
+        try {
+          await queue.close();
+        } finally {
+          producerConnection.disconnect();
+        }
+        if (results.some((result) => result.status === 'rejected'))
+          throw new PlatformError('DEPENDENCY_UNAVAILABLE', 'Worker drain deadline exceeded.');
+      })();
+      return closing;
     },
   });
 }

@@ -175,7 +175,19 @@ function BuilderInner(p: PageProps & { workflowId: string }) {
   async function decide(approved: boolean) {
     setDecisionBusy(true);
     try {
-      await api(`${p.base}/runs/${runId}/approve`, { nodeId: selected, approved });
+      if (run?.runtimeProfile === 'production') {
+        const approval = run.approvals?.find(
+          (a: any) => a.node_id === selected && a.status === 'pending',
+        );
+        if (!approval)
+          throw new Error(
+            'The pending approval changed. Reload this run and review its arguments.',
+          );
+        await api(`${p.base}/approvals/${approval.id}/decision`, {
+          argumentHash: approval.argument_hash,
+          approved,
+        });
+      } else await api(`${p.base}/runs/${runId}/approve`, { nodeId: selected, approved });
       setRun(await api(`${p.base}/runs/${runId}`));
     } catch (error) {
       p.notify((error as Error).message, true);

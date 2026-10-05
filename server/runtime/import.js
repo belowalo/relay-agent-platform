@@ -109,7 +109,7 @@ export function readImport(source, { legacyKey } = {}) {
     db.close();
   }
 }
-export async function importToPostgres(pool, source, { dryRun = true, legacyKey } = {}) {
+export async function importToPostgres(pool, source, { dryRun = true, legacyKey, integrate } = {}) {
   const input = readImport(source, { legacyKey });
   const client = await pool.connect();
   try {
@@ -119,7 +119,7 @@ export async function importToPostgres(pool, source, { dryRun = true, legacyKey 
       const count = (await client.query(`SELECT count(*) AS n FROM relay.${name}`)).rows[0];
       if (Number(count.n)) fail('IMPORT_DESTINATION_NOT_EMPTY');
     }
-    if (!dryRun) {
+    {
       await client.query('SET CONSTRAINTS ALL DEFERRED');
       for (const { name } of manifest)
         for (const row of input.tables.get(name)) {
@@ -132,10 +132,12 @@ export async function importToPostgres(pool, source, { dryRun = true, legacyKey 
       await client.query(
         "SELECT setval(pg_get_serial_sequence('relay.events','id'),greatest(coalesce((SELECT max(id) FROM relay.events),0),1),(SELECT count(*)>0 FROM relay.events))",
       );
+      await integrate?.(client, input, { legacyKey });
       for (const { name } of manifest) {
         const count = (await client.query(`SELECT count(*) AS n FROM relay.${name}`)).rows[0];
         if (Number(count.n) !== input.counts[name]) fail('IMPORT_COUNT_MISMATCH');
       }
+      await client.query('SET CONSTRAINTS ALL IMMEDIATE');
     }
     await client.query(dryRun ? 'ROLLBACK' : 'COMMIT');
     return {

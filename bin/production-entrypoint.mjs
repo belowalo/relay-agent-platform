@@ -9,6 +9,10 @@ try {
     'METRICS_TOKEN',
     'S3_ACCESS_KEY_ID',
     'S3_SECRET_ACCESS_KEY',
+    'IDENTITY_DATABASE_URL',
+    'RATE_DATABASE_URL',
+    'RUNTIME_DISPATCH_DATABASE_URL',
+    'PARSER_TOKEN',
   ]) {
     if (process.env[`${name}_FILE`]) {
       if (process.env[name]) throw new Error();

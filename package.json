@@ -13,8 +13,8 @@
     "test": "node --test --test-concurrency=1 tests/*.test.js",
     "test:browser": "playwright test",
     "check": "npm run build && npm test",
-    "format": "prettier --write src server/*.js server/foundation server/runtime server/security server/knowledge server/connectors server/observability tests sdk/javascript/*.mjs bin/*.mjs vite.config.ts playwright.config.ts README.md CONTRIBUTING.md SECURITY.md docs/*.md docs/production .github/workflows/*.yml",
-    "format:check": "prettier --check src server/*.js server/foundation server/runtime server/security server/knowledge server/connectors server/observability tests sdk/javascript/*.mjs bin/*.mjs vite.config.ts playwright.config.ts README.md CONTRIBUTING.md SECURITY.md docs/*.md docs/production .github/workflows/*.yml",
+    "format": "prettier --write src server/*.js server/foundation server/runtime server/security server/knowledge server/connectors server/observability server/production tests sdk/javascript/*.mjs bin/*.mjs vite.config.ts playwright.config.ts README.md CONTRIBUTING.md SECURITY.md docs/*.md docs/production .github/workflows/*.yml",
+    "format:check": "prettier --check src server/*.js server/foundation server/runtime server/security server/knowledge server/connectors server/observability server/production tests sdk/javascript/*.mjs bin/*.mjs vite.config.ts playwright.config.ts README.md CONTRIBUTING.md SECURITY.md docs/*.md docs/production .github/workflows/*.yml",
     "worker": "node server/worker.js",
     "start:api": "node server/index.js",
     "foundation:config": "node bin/foundation.mjs config",
@@ -47,7 +47,9 @@
     "test:security-services": "node bin/security-services.mjs",
     "runtime:start": "node bin/runtime.mjs",
     "runtime:import": "node bin/runtime.mjs import",
-    "test:runtime": "node --test tests/production-runtime.test.js"
+    "test:runtime": "node --test tests/production-runtime.test.js",
+    "test:production-services": "node bin/integration-services.mjs",
+    "models:provision": "node bin/provision-embeddings.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.0",

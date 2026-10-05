@@ -17,8 +17,9 @@ x-app: &app
   restart: unless-stopped
   logging: { driver: json-file, options: { max-size: 10m, max-file: '5' } }
   networks: [private, egress]
+  volumes: ['${MODELS_PATH:?Preprovisioned embedding cache required}:/models:ro']
   secrets:
-    [app_database_url, redis_url, encryption_key, metrics_token, s3_access_key, s3_secret_key]
+    [app_database_url, identity_database_url, rate_database_url, redis_url, encryption_key, metrics_token, s3_access_key, s3_secret_key]
   environment: &env
     RELAY_PROFILE: production
     NODE_ENV: production
@@ -29,6 +30,11 @@ x-app: &app
     COOKIE_SECURE: 'true'
     ALLOW_PRIVATE_NETWORK: 'false'
     DATABASE_URL_FILE: /run/secrets/app_database_url
+    IDENTITY_DATABASE_URL_FILE: /run/secrets/identity_database_url
+    RATE_DATABASE_URL_FILE: /run/secrets/rate_database_url
+    RUNTIME_ADAPTER_MODULE: /app/server/production/index.js
+    EMBEDDING_CACHE_DIR: /models
+    ALLOW_REGISTRATION: 'false'
     REDIS_URL_FILE: /run/secrets/redis_url
     ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
     ENCRYPTION_KEY_ID: primary
@@ -76,9 +82,39 @@ services:
     <<: *app
   worker:
     <<: *app
+    secrets: [app_database_url, dispatch_database_url, redis_url, encryption_key, metrics_token, s3_access_key, s3_secret_key, parser_token]
+    networks: [private, egress, parsing]
     environment:
       <<: *env
       ENGINE_ROLE: worker
+      RUNTIME_DISPATCH_DATABASE_URL_FILE: /run/secrets/dispatch_database_url
+      IDENTITY_DATABASE_URL_FILE: ''
+      RATE_DATABASE_URL_FILE: ''
+      PARSER_ENDPOINT: http://parser:4312
+      PARSER_INTERNAL_NETWORK: 'true'
+      PARSER_TOKEN_FILE: /run/secrets/parser_token
+  parser:
+    image: ${RELAY_IMAGE:-relay-operations:local}
+    init: true
+    command: [node, server/production/parser-service.js]
+    user: '1000:1000'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=256m,uid=1000,gid=1000']
+    mem_limit: 768m
+    cpus: 1
+    pids_limit: 32
+    restart: unless-stopped
+    stop_grace_period: 40s
+    networks: [parsing]
+    secrets: [parser_token]
+    environment: { PORT: '4312', PARSER_TOKEN_FILE: /run/secrets/parser_token }
+    healthcheck:
+      test: [CMD, node, bin/healthcheck.mjs]
+      interval: 10s
+      timeout: 4s
+      retries: 6
   proxy:
     image: relay-proxy:local
     build: { context: .., dockerfile: deploy/Dockerfile.proxy }
@@ -104,7 +140,7 @@ services:
         POSTGRES_USER: relay_owner,
         POSTGRES_PASSWORD_FILE: /run/secrets/database_password,
       }
-    secrets: [database_password, app_database_password]
+    secrets: [database_password, app_database_password, identity_database_password, rate_database_password, dispatch_database_password]
     volumes:
       [
         'postgres:/var/lib/postgresql/data',
@@ -213,6 +249,7 @@ services:
     cpus: 1
 networks:
   private: { internal: true }
+  parsing: { internal: true }
   egress: {}
 volumes:
   postgres: {}
@@ -226,6 +263,13 @@ secrets:
     { file: '${SECRETS_PATH:?Private secrets directory required}/database_password' }
   app_database_password: { file: '${SECRETS_PATH}/app_database_password' }
   app_database_url: { file: '${SECRETS_PATH}/app_database_url' }
+  identity_database_password: { file: '${SECRETS_PATH}/identity_database_password' }
+  rate_database_password: { file: '${SECRETS_PATH}/rate_database_password' }
+  dispatch_database_password: { file: '${SECRETS_PATH}/dispatch_database_password' }
+  identity_database_url: { file: '${SECRETS_PATH}/identity_database_url' }
+  rate_database_url: { file: '${SECRETS_PATH}/rate_database_url' }
+  dispatch_database_url: { file: '${SECRETS_PATH}/dispatch_database_url' }
+  parser_token: { file: '${SECRETS_PATH}/parser_token' }
   redis_password: { file: '${SECRETS_PATH}/redis_password' }
   redis_url: { file: '${SECRETS_PATH}/redis_url' }
   encryption_key: { file: '${SECRETS_PATH}/encryption_key' }
