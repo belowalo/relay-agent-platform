@@ -12,6 +12,8 @@ import {
   createWorkspace,
 } from './auth.js';
 import { safeFetch, responseText } from './network.js';
+import { validateOidcConfiguration } from './security/http.js';
+import { accountAudit } from './security/local.js';
 const route = (fn) => async (req, res, next) => {
   try {
     await fn(req, res);
@@ -104,6 +106,7 @@ async function discovery() {
   return d;
 }
 export function registerSecurity(app, { seed }) {
+  validateOidcConfiguration();
   app.get('/api/auth/options', (req, res) =>
     res.json({ sso: ssoEnabled(), passwordReset: resetEnabled() }),
   );
@@ -129,6 +132,7 @@ export function registerSecurity(app, { seed }) {
       if (user.mfa_secret) throw new Error('Two-factor authentication is already enabled');
       const secret = new OTPAuth.Secret({ size: 20 }).base32;
       exec('UPDATE users SET mfa_pending=? WHERE id=?', encrypt(secret), user.id);
+      accountAudit(user.id, 'mfa.setup');
       res.json({ secret, uri: totp(secret, user.email).toString() });
     }),
   );
@@ -146,9 +150,13 @@ export function registerSecurity(app, { seed }) {
       const codes = Array.from({ length: 8 }, () => crypto.randomBytes(8).toString('hex'));
       transaction(() => {
         exec(
-          'UPDATE users SET mfa_secret=mfa_pending,mfa_pending=NULL,mfa_last_step=NULL WHERE id=?',
+          'UPDATE users SET mfa_secret=mfa_pending,mfa_pending=NULL,mfa_last_step=? WHERE id=?',
+          Math.floor(Date.now() / 30000) +
+            totp(decrypt(user.mfa_pending)).validate({ token: code, window: 1 }),
           user.id,
         );
+        exec('DELETE FROM auth_challenges WHERE user_id=?', user.id);
+        accountAudit(user.id, 'mfa.enabled');
         exec('DELETE FROM mfa_recovery WHERE user_id=?', user.id);
         for (const code of codes) exec('INSERT INTO mfa_recovery VALUES(?,?)', user.id, hash(code));
         exec(
@@ -200,7 +208,11 @@ export function registerSecurity(app, { seed }) {
           user.id,
         );
         exec('DELETE FROM mfa_recovery WHERE user_id=?', user.id);
+        exec('DELETE FROM sessions WHERE user_id=?', user.id);
+        exec('DELETE FROM auth_challenges WHERE user_id=?', user.id);
+        accountAudit(user.id, 'mfa.disabled');
       });
+      createSession(res, user.id);
       res.json({ ok: true });
     }),
   );
@@ -224,6 +236,8 @@ export function registerSecurity(app, { seed }) {
       transaction(() => {
         exec('UPDATE users SET password=? WHERE id=?', passwordHash(b.password), user.id);
         exec('DELETE FROM sessions WHERE user_id=?', user.id);
+        exec('DELETE FROM auth_challenges WHERE user_id=?', user.id);
+        accountAudit(user.id, 'password.changed');
       });
       createSession(res, user.id);
       res.json({ ok: true });
@@ -281,6 +295,7 @@ export function registerSecurity(app, { seed }) {
         exec('UPDATE users SET password=? WHERE id=?', passwordHash(b.password), r.user_id);
         exec('DELETE FROM sessions WHERE user_id=?', r.user_id);
         exec('DELETE FROM auth_challenges WHERE user_id=?', r.user_id);
+        accountAudit(r.user_id, 'password.reset.completed');
       });
       res.json({ ok: true });
     }),

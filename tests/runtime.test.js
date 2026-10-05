@@ -11,9 +11,11 @@ import { DatabaseSync } from 'node:sqlite';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { RelayClient } from '../sdk/javascript/relay.mjs';
+import { freeTestPort } from './helpers/port.js';
 
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'relay-runtime-test-'));
-const origin = 'http://127.0.0.1:14326';
+const port = await freeTestPort();
+const origin = `http://127.0.0.1:${port}`;
 const execute = promisify(execFile);
 let server,
   fixture,
@@ -54,7 +56,7 @@ async function ok(url, body, method, auth) {
 }
 async function start() {
   server = spawn(process.execPath, ['server/index.js'], {
-    env: { ...process.env, DATA_DIR: directory, PORT: '14326', ALLOW_PRIVATE_NETWORK: 'true' },
+    env: { ...process.env, DATA_DIR: directory, PORT: String(port), ALLOW_PRIVATE_NETWORK: 'true' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   server.stdout.on('data', (b) => {

@@ -229,6 +229,7 @@ registerProvider('anthropic', async ({ connection, messages, config, tools, sign
   };
 });
 export async function modelCall(ctx, config, messages, tools = []) {
+  ctx.assertLease?.();
   if (ctx.mode === 'preview') {
     const last = messages.findLast((m) => m.role === 'user')?.content || '';
     const text = `Development preview · ${config.role || config.label || 'Agent'}\n\nTask context:\n${String(last).slice(0, 5000)}\n\nInstructions: ${config.instructions || 'Process the incoming task.'}\n\nThis deterministic preview verifies orchestration and data flow. Connect a model for generated research or reasoning.`;
@@ -300,6 +301,7 @@ export async function modelCall(ctx, config, messages, tools = []) {
     let emitted = false;
     try {
       ctx.signal?.throwIfAborted();
+      ctx.assertLease?.();
       const result = await providerRegistry[connection.provider]({
         connection,
         // A fallback uses its own default model identifier.

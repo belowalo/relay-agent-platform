@@ -6,6 +6,7 @@ export function passwordHash(password) {
 }
 export function checkPassword(password, stored) {
   const [salt, key] = stored.split(':');
+  if (!/^[a-f0-9]{32}$/.test(salt) || !/^[a-f0-9]{128}$/.test(key)) return false;
   const actual = crypto.scryptSync(password, salt, 64);
   return crypto.timingSafeEqual(actual, Buffer.from(key, 'hex'));
 }
@@ -15,7 +16,7 @@ export function createSession(res, user) {
   res.cookie('relay_session', token, {
     httpOnly: true,
     sameSite: 'strict',
-    secure: process.env.COOKIE_SECURE === 'true',
+    secure: process.env.NODE_ENV === 'production' || process.env.COOKIE_SECURE === 'true',
     maxAge: 7 * 86400000,
     path: '/',
   });
@@ -41,7 +42,7 @@ export function workspaceAccess(req, res, next) {
 }
 export function requireRole(role) {
   return (req, res, next) => {
-    if (rank[req.role] < rank[role])
+    if (!Object.hasOwn(rank, role) || !Object.hasOwn(rank, req.role) || rank[req.role] < rank[role])
       return res.status(403).json({ error: `${role} access is required` });
     next();
   };
