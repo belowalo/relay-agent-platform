@@ -1,0 +1,61 @@
+{
+  "commit": "050d9d6a6e09f53131b0c797fa157642ce4914c5",
+  "sharedTrace": [
+    {
+      "time": "2026-10-05T08:15:18.123Z",
+      "service": "relay-api",
+      "event": "span_completed",
+      "requestId": "recovery-drill",
+      "kind": "api",
+      "status": "ok",
+      "durationMs": 18,
+      "traceId": "3080f268c2e5d2237403a5e2a62d4c2d",
+      "spanId": "b994f34ffd5f33c3"
+    },
+    {
+      "time": "2026-10-05T08:15:18.140Z",
+      "service": "relay-worker",
+      "event": "span_completed",
+      "kind": "provider",
+      "status": "ok",
+      "durationMs": 0,
+      "requestId": "recovery-drill",
+      "traceId": "3080f268c2e5d2237403a5e2a62d4c2d",
+      "spanId": "2ecffb2114970c4c"
+    },
+    {
+      "time": "2026-10-05T08:15:18.141Z",
+      "service": "relay-worker",
+      "event": "span_completed",
+      "kind": "tool",
+      "status": "ok",
+      "durationMs": 0,
+      "requestId": "recovery-drill",
+      "traceId": "3080f268c2e5d2237403a5e2a62d4c2d",
+      "spanId": "773014d175f982a5"
+    },
+    {
+      "time": "2026-10-05T08:15:18.151Z",
+      "service": "relay-worker",
+      "event": "span_completed",
+      "kind": "retrieval",
+      "status": "ok",
+      "durationMs": 8,
+      "requestId": "recovery-drill",
+      "traceId": "3080f268c2e5d2237403a5e2a62d4c2d",
+      "spanId": "a9ce71c03661b52c"
+    },
+    {
+      "time": "2026-10-05T08:15:18.155Z",
+      "service": "relay-worker",
+      "event": "span_completed",
+      "requestId": "recovery-drill",
+      "jobId": "a0e3da68-50e1-4db3-9920-b100950bcb36",
+      "kind": "job",
+      "status": "ok",
+      "durationMs": 15,
+      "traceId": "3080f268c2e5d2237403a5e2a62d4c2d",
+      "spanId": "10a21fffab592e86"
+    }
+  ]
+}

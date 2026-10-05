@@ -4,7 +4,7 @@ Starting commit: `76649286b51b39924261a876878efebf5e02f020`; branch `codex/produ
 
 ## Install and qualify
 
-Requires Linux Docker Engine with Compose >=2.24.4, local block storage, outbound registry/npm access, and Node 24 for the test driver. The reference host needs at least 8 vCPU, 16 GiB RAM and enough disk for images, database, objects and two backup copies; those are allocation requirements, not measured throughput. All upstream images are digest-pinned. `npm ci` uses the committed dependency lock. Image digests, checksums, CycloneDX SBOM, scanner output, deployment archive and an importable application image are CI artifacts keyed by commit.
+Requires Linux Docker Engine with Compose >=2.24.4, local block storage, outbound registry/npm access, and Node 24 for the test driver. The reference host needs at least 8 vCPU, 16 GiB RAM and enough disk for images, database, objects and two backup copies; those are allocation requirements, not measured throughput. All upstream images are digest-pinned. The application uses a minimal distroless Node 24 runtime without a shell or package manager. `npm ci` uses the committed dependency lock. Image digests, checksums, CycloneDX SBOM, application and infrastructure scanner output, deployment archive and an importable application image are CI artifacts keyed by commit.
 
 ```sh
 npm ci
@@ -64,4 +64,4 @@ Before upgrade, record the immutable current image/schema, quiesce and take a ve
 
 External staging requires an existing authorized account, host, DNS/TLS, storage, secret escrow, alert receiver and spending authorization. None is assumed or created by this package.
 
-Sources: [Docker service limits/secrets](https://docs.docker.com/reference/compose-file/services/), [PostgreSQL consistent dumps](https://www.postgresql.org/docs/current/app-pgdump.html), [OpenTelemetry propagation](https://opentelemetry.io/docs/languages/js/propagation/), [RustFS secret-file configuration](https://github.com/rustfs/docs.rustfs.com/blob/main/content/en/reference/environment-variables.md).
+Sources: [Distroless Node runtime](https://github.com/GoogleContainerTools/distroless/blob/main/nodejs/README.md), [Docker service limits/secrets](https://docs.docker.com/reference/compose-file/services/), [PostgreSQL consistent dumps](https://www.postgresql.org/docs/current/app-pgdump.html), [OpenTelemetry propagation](https://opentelemetry.io/docs/languages/js/propagation/), [RustFS secret-file configuration](https://github.com/rustfs/docs.rustfs.com/blob/main/content/en/reference/environment-variables.md).

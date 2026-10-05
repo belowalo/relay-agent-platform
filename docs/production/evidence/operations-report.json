@@ -1,0 +1,121 @@
+{
+  "releaseCommit": "050d9d6a6e09f53131b0c797fa157642ce4914c5",
+  "qualificationOnly": true,
+  "runtimeIntegrated": false,
+  "platform": "linux/x64",
+  "host": {
+    "cpuCount": 4,
+    "totalMemoryBytes": 16766410752
+  },
+  "startedAt": "2026-10-05T08:14:22.141Z",
+  "drills": [
+    {
+      "name": "clean-build-and-infrastructure",
+      "status": "passed",
+      "elapsedMs": 54505
+    },
+    {
+      "name": "startup-rejects-unsafe-settings",
+      "status": "passed",
+      "elapsedMs": 1105
+    },
+    {
+      "name": "tls-and-private-exposure",
+      "status": "passed",
+      "elapsedMs": 35
+    },
+    {
+      "name": "job-traces-and-structured-redaction",
+      "status": "passed",
+      "elapsedMs": 2668
+    },
+    {
+      "name": "provider-outage-and-quota",
+      "status": "passed",
+      "elapsedMs": 5
+    },
+    {
+      "name": "disk-exhaustion",
+      "status": "passed",
+      "elapsedMs": 300
+    },
+    {
+      "name": "database-outage",
+      "status": "passed",
+      "elapsedMs": 1434
+    },
+    {
+      "name": "queue-outage",
+      "status": "passed",
+      "elapsedMs": 1489
+    },
+    {
+      "name": "worker-crash-and-stuck-jobs",
+      "status": "passed",
+      "elapsedMs": 10069
+    },
+    {
+      "name": "failed-migration",
+      "status": "passed",
+      "elapsedMs": 385
+    },
+    {
+      "name": "graceful-drain-and-encrypted-backup",
+      "status": "passed",
+      "elapsedMs": 1278
+    },
+    {
+      "name": "credential-compromise-key-dependency",
+      "status": "passed",
+      "elapsedMs": 329
+    },
+    {
+      "name": "backup-tamper-rejected",
+      "status": "passed",
+      "elapsedMs": 337
+    },
+    {
+      "name": "restore-empty-database-and-blobs",
+      "status": "passed",
+      "elapsedMs": 14683
+    },
+    {
+      "name": "image-rollback",
+      "status": "passed",
+      "elapsedMs": 6467
+    }
+  ],
+  "resources": {
+    "appMemoryBytes": 2147483648,
+    "appNanoCpus": 2000000000,
+    "appPidsLimit": 256
+  },
+  "traceCorrelation": {
+    "apiJobProviderToolRetrievalSharedTrace": true
+  },
+  "backup": {
+    "command": "create",
+    "bytes": 10745,
+    "objects": 1,
+    "elapsedMs": 152,
+    "createdAt": "2026-10-05T08:15:35.121Z"
+  },
+  "restore": {
+    "command": "restore",
+    "objects": 1,
+    "elapsedMs": 144,
+    "backupCreatedAt": "2026-10-05T08:15:35.121Z",
+    "release": "050d9d6a6e09f53131b0c797fa157642ce4914c5"
+  },
+  "restoredState": {
+    "credentialDecrypted": true,
+    "vectorRestored": true,
+    "blobRestored": true,
+    "state": "completed"
+  },
+  "recoveryTimeMs": 14683,
+  "recoveryPoint": "Quiesced snapshot; scheduled target <=1h only while every hourly backup succeeds and is copied off-host.",
+  "rollbackScope": "Same tested image identity and compatible restored schema; integrated previous-version rollback remains required.",
+  "status": "passed",
+  "completedAt": "2026-10-05T08:15:57.888Z"
+}

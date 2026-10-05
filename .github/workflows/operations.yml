@@ -32,6 +32,16 @@ jobs:
         run: |
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/operations-results:/results" aquasec/trivy:0.67.2@sha256:e2b22eac59c02003d8749f5b8d9bd073b62e30fefaef5b7c8371204e0a4b0c08 image --format json --output /results/vulnerabilities.json relay-operations:local
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.67.2@sha256:e2b22eac59c02003d8749f5b8d9bd073b62e30fefaef5b7c8371204e0a4b0c08 image --exit-code 1 --severity HIGH,CRITICAL relay-operations:local
+      - name: Record infrastructure image findings for security review
+        if: success()
+        run: |
+          node bin/operations-init.mjs .operations-private
+          mkdir -p operations-results/infrastructure
+          docker compose --env-file .operations-private/production.env -f deploy/compose.production.yaml config --images | sort -u > operations-results/infrastructure/images.txt
+          while IFS= read -r image; do
+            report_id=$(printf '%s' "$image" | sha256sum | cut -c1-12)
+            docker run --rm -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/operations-results/infrastructure:/results" aquasec/trivy:0.67.2@sha256:e2b22eac59c02003d8749f5b8d9bd073b62e30fefaef5b7c8371204e0a4b0c08 image --format json --output "/results/$report_id.json" "$image"
+          done < operations-results/infrastructure/images.txt
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()
         with:
@@ -51,6 +61,7 @@ jobs:
             operations-results/relay-image-id.txt
             operations-results/SHA256SUMS
             operations-results/sbom.cdx.json
+            operations-results/infrastructure/
           retention-days: 14
   secret-scan:
     runs-on: ubuntu-latest
