@@ -960,6 +960,11 @@ test(
             'RUNTIME_MEASUREMENT ' +
               json({
                 samples: samples.length,
+                node: process.version,
+                platform: os.platform(),
+                hostLogicalCpus: os.cpus().length,
+                hostMemoryMiB: Math.round(os.totalmem() / 1048576),
+                workerRssMiB: Number((process.memoryUsage().rss / 1048576).toFixed(2)),
                 fixtureProviderMs: 20,
                 wallP95Ms: Number(p95(samples).toFixed(2)),
                 applicationOverheadP95Ms: Number(p95(overhead).toFixed(2)),
