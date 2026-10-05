@@ -10,6 +10,7 @@ export function createRuntimeApi({
   ready = async () => true,
   draining = () => false,
   registerRoutes,
+  usage,
 }) {
   if (typeof authenticate !== 'function' || typeof authorize !== 'function')
     fail('MISSING_AUTHORIZATION_PORT');
@@ -117,6 +118,52 @@ export function createRuntimeApi({
     if (!(await authorize(req.context, { operation: 'recover', runId: req.params.id })))
       fail('FORBIDDEN');
     await repository.retry(req.context, req.params.id);
+    res.json({ ok: true });
+  });
+  router.post('/runs/:id/steps/:stepId/usage-reconcile', async (req, res) => {
+    if (
+      !usage ||
+      !(await authorize(req.context, {
+        operation: 'reconcile',
+        runId: req.params.id,
+        stepId: req.params.stepId,
+      }))
+    )
+      fail('FORBIDDEN');
+    const { reservationId, resolution, actual, knownNotExecuted } = req.body;
+    const run = await repository.getRun(req.context, req.params.id);
+    const step = (await repository.getSteps(req.context, req.params.id)).find(
+      (s) => s.id === req.params.stepId,
+    );
+    if (
+      !run ||
+      !['failed', 'cancelled'].includes(run.status) ||
+      decode(step?.checkpoint)?.reservationId !== reservationId
+    )
+      fail('USAGE_RECONCILIATION_CONFLICT');
+    if (resolution === 'settle') {
+      if (
+        !Number.isSafeInteger(actual?.tokens) ||
+        actual.tokens < 0 ||
+        !(
+          actual.costMicros === null ||
+          (Number.isSafeInteger(actual.costMicros) && actual.costMicros >= 0)
+        ) ||
+        typeof actual.provider !== 'string' ||
+        typeof actual.model !== 'string'
+      )
+        fail('VALIDATION_ERROR');
+      await usage.settle(req.context, reservationId, actual);
+    } else if (resolution === 'release' && knownNotExecuted === true)
+      await usage.release(req.context, reservationId);
+    else fail('VALIDATION_ERROR');
+    await repository.clearUsageCheckpoint(
+      req.context,
+      req.params.id,
+      req.params.stepId,
+      reservationId,
+      resolution,
+    );
     res.json({ ok: true });
   });
   router.get('/runs/:id/approvals', async (req, res) =>

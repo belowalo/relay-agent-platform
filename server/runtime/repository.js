@@ -95,6 +95,7 @@ export function createRuntimeRepository(database, { leaseMs = 30000 } = {}) {
   ) {
     limits = limitsFor(limits);
     checkGraph(graph, limits);
+    boundOutput(input, limits);
     if (!['live', 'preview'].includes(mode) || depth > limits.childDepth) fail('INVALID_RUN');
     const cap = await capacity(s);
     const count = await s.one(
@@ -464,7 +465,9 @@ export function createRuntimeRepository(database, { leaseMs = 30000 } = {}) {
       });
     },
     prepareAction(context, lease, step, tool, args, checkpoint, approval = true, callKey = 'node') {
-      return fenced(context, lease, async (s) => {
+      return fenced(context, lease, async (s, r) => {
+        boundOutput(args, limitsFor(decode(r.limits)));
+        boundOutput(checkpoint, limitsFor(decode(r.limits)));
         const hash = argumentHash(args);
         let a = await s.one(
           'SELECT * FROM relay.actions WHERE workspace_id=$1 AND run_id=$2 AND step_id=$3 AND call_key=$4 FOR UPDATE',
@@ -579,6 +582,26 @@ export function createRuntimeRepository(database, { leaseMs = 30000 } = {}) {
           [actionId, status, json(result), json({ actor: context.actor, note })],
         );
         await event(s, a.run_id, 'action.reconciled', null, { actionId, status });
+      });
+    },
+    clearUsageCheckpoint(context, runId, stepId, reservationId, resolution) {
+      return tx(context, async (s) => {
+        await capacity(s);
+        const run = await scoped(s, 'runs', runId, 'FOR UPDATE');
+        if (!run || !['failed', 'cancelled'].includes(run.status)) fail('RUN_CONFLICT');
+        const step = await s.one(
+          'SELECT * FROM relay.steps WHERE id=$1 AND run_id=$2 AND workspace_id=$3 FOR UPDATE',
+          [stepId, runId, context.workspaceId],
+        );
+        const cp = decode(step?.checkpoint);
+        if (!cp || cp.reservationId !== reservationId) fail('USAGE_RECONCILIATION_CONFLICT');
+        delete cp.reservationId;
+        await s.query('UPDATE relay.steps SET checkpoint=$2 WHERE id=$1', [stepId, json(cp)]);
+        await event(s, runId, 'usage.reconciled', step.node_id, {
+          reservationId,
+          resolution,
+          reviewer: context.actor.id,
+        });
       });
     },
     retry(context, runId) {

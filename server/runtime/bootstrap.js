@@ -121,6 +121,7 @@ export async function startProduction({
       ready,
       draining: () => closed,
       registerRoutes: ports.registerRoutes,
+      usage: ports.usage,
     });
     if (listen && config.role === 'api')
       server = await new Promise((resolve, reject) => {

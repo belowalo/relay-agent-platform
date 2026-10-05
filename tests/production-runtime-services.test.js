@@ -18,6 +18,7 @@ import { createRuntimeWorker } from '../server/runtime/worker.js';
 import { createDispatcher } from '../server/runtime/dispatcher.js';
 import { createRuntimeScheduler } from '../server/runtime/scheduler.js';
 import { createRuntimeApi } from '../server/runtime/api.js';
+import { startProduction } from '../server/runtime/bootstrap.js';
 import { importToPostgres } from '../server/runtime/import.js';
 import { uuid, json, decode, argumentHash } from '../server/runtime/core.js';
 import {
@@ -566,6 +567,132 @@ test(
             (await fetch(origin + `/api/w/${c.workspaceId}/runs/${run}/events`)).status,
             200,
           );
+        },
+      );
+      await t.test(
+        'shared backpressure and tenant fair dispatch do not let one workspace monopolize claims',
+        async () => {
+          await admin.query(
+            "INSERT INTO relay.workspaces(id,name,created_at) VALUES('fair_workspace','Synthetic fair tenant',$1)",
+            [new Date().toISOString()],
+          );
+          const fair = context('fair_workspace');
+          await repo.tx(fair, (s) =>
+            s.query(
+              'INSERT INTO relay.runtime_capacity(workspace_id,max_running,max_queued) VALUES($1,1,1)',
+              [fair.workspaceId],
+            ),
+          );
+          const workflowId = await repo.createWorkflow(fair, {
+              name: 'Fair tenant',
+              graph: linear(),
+            }),
+            versionId = await repo.publish(fair, workflowId);
+          const id = await repo.createRun(fair, { workflowId, versionId, input: { fair: true } });
+          await assert.rejects(
+            repo.createRun(fair, { workflowId, versionId, input: { tooMany: true } }),
+            /BACKPRESSURE/,
+          );
+          const published = [];
+          const dispatcher = createDispatcher({
+            repository: repo,
+            listWorkspaces: async () => [c.workspaceId, fair.workspaceId],
+            queue: {
+              async publish(job) {
+                published.push(job.workspaceId);
+              },
+            },
+          });
+          await dispatcher.tick();
+          assert.equal(published.filter((w) => w === fair.workspaceId).length, 1);
+          assert.ok(published.filter((w) => w === c.workspaceId).length <= 1);
+          await dispatcher.close();
+          await repo.cancel(fair, id);
+        },
+      );
+      await t.test(
+        'stranded shared usage reservation blocks replay and requires explicit idempotent accounting reconciliation',
+        async () => {
+          const id = await create(linear('model'));
+          let invoked = 0;
+          const w = createRuntimeWorker({
+            repository: repo,
+            leaseMs: 400,
+            usage,
+            authorize: async () => true,
+            model: {
+              async call(ctx, request) {
+                return request.meteredCall(
+                  { maximumTokens: 20, maximumCostMicros: null },
+                  async () => {
+                    invoked++;
+                    throw new Error('ambiguous provider response');
+                  },
+                );
+              },
+            },
+          });
+          await w.execute(reference(id));
+          const step = (await repo.getSteps(c, id)).find((s) => s.node_id === 'work'),
+            reservationId = decode(step.checkpoint).reservationId;
+          assert.ok(reservationId);
+          await repo.retry(c, id);
+          await w.execute(reference(id));
+          assert.equal(invoked, 1);
+          await usage.settle(c, reservationId, {
+            tokens: 2,
+            costMicros: null,
+            provider: 'fixture',
+            model: 'fixture',
+          });
+          await repo.clearUsageCheckpoint(c, id, step.id, reservationId, 'settle');
+          assert.equal(
+            decode((await repo.getSteps(c, id)).find((s) => s.id === step.id).checkpoint)
+              .reservationId,
+            undefined,
+          );
+          await assert.rejects(
+            repo.clearUsageCheckpoint(c, id, step.id, reservationId, 'settle'),
+            /USAGE_RECONCILIATION_CONFLICT/,
+          );
+        },
+      );
+      await t.test(
+        'production bootstrap readiness, application shutdown and restart preserve authoritative runs',
+        async () => {
+          const config = {
+            ...loadConfig({
+              RELAY_PROFILE: 'production',
+              DATABASE_URL: appUrl.href,
+              REDIS_URL: redisUrl,
+              QUEUE_PREFIX: 'runtime_bootstrap_' + suffix,
+              PUBLIC_ORIGIN: 'https://fixture.invalid',
+              ENCRYPTION_KEY: 'a'.repeat(64),
+            }),
+            port: 0,
+          };
+          const ports = { authenticate: async () => c, authorize: async () => true, usage };
+          const first = await startProduction({ config, ports, listen: false });
+          assert.equal(await first.ready(), true);
+          const workflowId = await first.repository.createWorkflow(c, {
+              name: 'Restart fixture',
+              graph: linear(),
+            }),
+            versionId = await first.repository.publish(c, workflowId),
+            id = await first.repository.createRun(c, {
+              workflowId,
+              versionId,
+              input: { restart: true },
+            });
+          await first.close();
+          const restarted = await startProduction({ config, ports, listen: false });
+          try {
+            assert.equal((await restarted.repository.getRun(c, id)).status, 'queued');
+            await worker().execute(reference(id));
+            assert.equal((await restarted.repository.getRun(c, id)).status, 'completed');
+          } finally {
+            await restarted.close();
+          }
         },
       );
       const prefix = 'runtime_test_' + suffix;
