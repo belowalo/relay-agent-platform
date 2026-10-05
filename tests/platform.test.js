@@ -7,8 +7,8 @@ import path from 'node:path';
 import http from 'node:http';
 import * as OTPAuth from 'otpauth';
 const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relay-platform-tests-'));
-const port = 14321,
-  origin = `http://127.0.0.1:${port}`;
+let port = Number(process.env.RELAY_PLATFORM_TEST_PORT || 0),
+  origin;
 let server,
   owner,
   viewer,
@@ -21,6 +21,13 @@ let server,
   toolRounds = 0;
 let logs = '';
 async function start() {
+  if (!port) {
+    const reservation = http.createServer();
+    await new Promise((resolve) => reservation.listen(0, '127.0.0.1', resolve));
+    port = reservation.address().port;
+    await new Promise((resolve) => reservation.close(resolve));
+  }
+  origin = `http://127.0.0.1:${port}`;
   server = spawn(process.execPath, ['server/index.js'], {
     cwd: process.cwd(),
     env: { ...process.env, PORT: String(port), DATA_DIR: testDir, ALLOW_PRIVATE_NETWORK: 'true' },
@@ -477,7 +484,11 @@ test('published versions stay immutable; authenticated API, webhook, chat and to
   assert.equal((await waitRun(chat.id)).output, 'VERSION ONE');
   const webhook = await fetch(origin + `/api/apps/${application.id}/webhook`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${application.token}`, 'Content-Type': 'application/json' },
+    headers: {
+      Authorization: `Bearer ${application.token}`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': 'fixture-webhook-0001',
+    },
     body: '{"input":"webhook"}',
   });
   assert.equal(webhook.status, 202);
@@ -1015,7 +1026,7 @@ test('MFA gates password login, prevents code replay, and supports one-use recov
   const otp = new OTPAuth.TOTP({ secret: OTPAuth.Secret.fromBase32(setup.secret) });
   const enabled = await ok(
     '/api/account/mfa/confirm',
-    { code: otp.generate() },
+    { code: otp.generate({ timestamp: Date.now() - 30000 }) },
     undefined,
     a.cookie,
   );
@@ -1087,17 +1098,19 @@ test('MFA gates password login, prevents code replay, and supports one-use recov
     ).status,
     401,
   );
-  await ok(
+  const disabled = await request(
     '/api/account/mfa/disable',
     { password: 'Test-password-2026', code: enabled.recoveryCodes[1] },
     undefined,
     a.cookie,
   );
+  assert.equal(disabled.status, 200);
+  const renewedCookie = disabled.headers.get('set-cookie').split(';')[0];
   await ok(
     '/api/account/password',
     { current: 'Test-password-2026', password: 'New-password-2026' },
     undefined,
-    a.cookie,
+    renewedCookie,
   );
   assert.equal((await request('/api/me', undefined, undefined, a.cookie)).status, 401);
   assert.equal(

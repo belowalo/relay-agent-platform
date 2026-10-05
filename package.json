@@ -13,8 +13,8 @@
     "test": "node --test --test-concurrency=1 tests/*.test.js",
     "test:browser": "playwright test",
     "check": "npm run build && npm test",
-    "format": "prettier --write src server/*.js server/foundation tests sdk/javascript/*.mjs bin/*.mjs vite.config.ts playwright.config.ts README.md CONTRIBUTING.md SECURITY.md docs/*.md docs/production .github/workflows/*.yml",
-    "format:check": "prettier --check src server/*.js server/foundation tests sdk/javascript/*.mjs bin/*.mjs vite.config.ts playwright.config.ts README.md CONTRIBUTING.md SECURITY.md docs/*.md docs/production .github/workflows/*.yml",
+    "format": "prettier --write src server/*.js server/foundation server/security tests sdk/javascript/*.mjs bin/*.mjs vite.config.ts playwright.config.ts README.md CONTRIBUTING.md SECURITY.md docs/*.md docs/production .github/workflows/*.yml",
+    "format:check": "prettier --check src server/*.js server/foundation server/security tests sdk/javascript/*.mjs bin/*.mjs vite.config.ts playwright.config.ts README.md CONTRIBUTING.md SECURITY.md docs/*.md docs/production .github/workflows/*.yml",
     "worker": "node server/worker.js",
     "start:api": "node server/index.js",
     "foundation:config": "node bin/foundation.mjs config",
@@ -22,7 +22,9 @@
     "foundation:probe": "node bin/foundation.mjs probe",
     "foundation:types": "tsc --ignoreConfig --noEmit --strict --skipLibCheck server/foundation/ports.d.ts",
     "test:foundation": "node --test tests/foundation.test.js",
-    "test:services": "node bin/test-services.mjs"
+    "test:services": "node bin/test-services.mjs",
+    "test:security": "node --test --test-concurrency=1 tests/production-security.test.js tests/security-boundaries.test.js tests/network.test.js tests/security.test.js tests/upload-security.test.js",
+    "test:security-services": "node bin/security-services.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.0",
@@ -50,6 +52,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
     "@playwright/test": "^1.63.0",
     "@types/node": "^26.6.4",
     "@types/react": "^19.3.0",

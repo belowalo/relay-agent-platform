@@ -8,9 +8,11 @@ import http from 'node:http';
 import net from 'node:net';
 import crypto from 'node:crypto';
 import { generateKeyPair, exportJWK, SignJWT } from 'jose';
+import { freeTestPort } from './helpers/port.js';
 test('OIDC verifies browser state, PKCE, signatures and identities; SMTP recovery expires sessions', async () => {
+  const port = await freeTestPort();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'relay-security-')),
-    origin = 'http://127.0.0.1:14326';
+    origin = `http://127.0.0.1:${port}`;
   let child,
     emailMessage = '',
     stateNonce = '',
@@ -117,7 +119,7 @@ test('OIDC verifies browser state, PKCE, signatures and identities; SMTP recover
     child = spawn(process.execPath, ['server/index.js'], {
       env: {
         ...process.env,
-        PORT: '14326',
+        PORT: String(port),
         DATA_DIR: dir,
         ENGINE_ROLE: 'api',
         ALLOW_PRIVATE_NETWORK: 'true',

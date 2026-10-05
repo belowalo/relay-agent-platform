@@ -46,7 +46,6 @@ import {
   addSource,
   ingestWebsite,
   crawlWebsite,
-  parseDocument,
   retrieve,
   indexSource,
   deleteSource,
@@ -58,10 +57,25 @@ import { safeFetch, responseText } from './network.js';
 import { registerSecurity, finishLogin } from './security.js';
 import { registerPlatform } from './platform.js';
 import { registerApplicationMcp } from './mcp-server.js';
+import { browserBoundary } from './security/http.js';
+import { localRateLimit } from './security/rate-limits.js';
+import {
+  issueGuestRun,
+  guestRunAccess,
+  consumeWebhook,
+  publicationAuthorized,
+  recordInvitation,
+  invitationAuthorized,
+  revokeMemberDelegations,
+} from './security/local.js';
+import { parseUpload } from './security/upload.js';
 const app = express();
 app.disable('x-powered-by');
 app.use(
-  helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'same-origin' } }),
+  helmet({
+    contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false,
+    crossOriginResourcePolicy: { policy: 'same-origin' },
+  }),
 );
 app.use(express.json({ limit: '3mb' }));
 app.use(cookieParser());
@@ -70,35 +84,15 @@ app.use((req, res, next) => {
   res.json = (value) => json(redact(req.workspace || req.application?.workspace_id, value));
   next();
 });
-app.use((req, res, next) => {
-  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && req.headers.origin) {
-    const origin = new URL(req.headers.origin).origin;
-    const permitted = process.env.PUBLIC_ORIGIN || `${req.protocol}://${req.get('host')}`;
-    if (
-      origin !== permitted &&
-      !(
-        process.env.NODE_ENV !== 'production' &&
-        ['http://127.0.0.1:5173', 'http://localhost:5173'].includes(origin)
-      )
-    )
-      return res.status(403).json({ error: 'Request origin is not allowed' });
-  }
-  next();
-});
-const authLimits = new Map();
-app.use(['/api/auth', '/api/account'], (req, res, next) => {
-  const key = req.ip,
-    record = authLimits.get(key) || { count: 0, reset: Date.now() + 900000 };
-  if (record.reset < Date.now()) {
-    record.count = 0;
-    record.reset = Date.now() + 900000;
-  }
-  record.count++;
-  authLimits.set(key, record);
-  if (record.count > 80)
-    return res.status(429).json({ error: 'Too many attempts; try again in 15 minutes' });
-  next();
-});
+app.use(
+  browserBoundary({
+    publicOrigin: process.env.PUBLIC_ORIGIN || `http://127.0.0.1:${process.env.PORT || 4311}`,
+    development: process.env.NODE_ENV !== 'production',
+  }),
+);
+app.use(['/api/auth', '/api/account'], localRateLimit({ limit: 80, windowMs: 900000 }));
+app.use('/api', localRateLimit({ limit: 600, windowMs: 60000 }));
+app.use(['/api/apps', '/apps'], localRateLimit({ limit: 300, windowMs: 60000 }));
 const route = (handler) => async (req, res, next) => {
   try {
     await handler(req, res);
@@ -319,7 +313,11 @@ app.post(
       hash(String(req.body.token || '')),
       Date.now(),
     );
-    if (!invite || invite.email.toLowerCase() !== req.user.email.toLowerCase())
+    if (
+      !invite ||
+      !invitationAuthorized(invite) ||
+      invite.email.toLowerCase() !== req.user.email.toLowerCase()
+    )
       return res
         .status(403)
         .json({ error: 'Invitation is invalid, expired, or addressed to another account' });
@@ -532,6 +530,7 @@ api.post(
       input: req.body.input ?? '',
       mode: req.body.mode || 'preview',
       conversationId: req.body.conversationId || null,
+      actor: { userId: req.user.id },
     });
     audit(req.workspace, req.user.id, 'run.started', runId);
     res.status(201).json({ id: runId });
@@ -575,6 +574,7 @@ api.post(
       graph,
       input: req.body.input,
       mode: req.body.mode || 'preview',
+      actor: { userId: req.user.id },
     });
     audit(req.workspace, req.user.id, 'component.tested', `${w.id}:${node.id}`);
     res.status(201).json({ id: runId });
@@ -653,6 +653,32 @@ function eventStream(req, res, runId) {
   res.flushHeaders();
   let cursor = Number(req.headers['last-event-id'] || req.query.after || 0);
   const timer = setInterval(() => {
+    let allowed = req.user
+      ? one(
+          'SELECT m.role FROM members m JOIN sessions s ON s.user_id=m.user_id WHERE m.workspace_id=? AND m.user_id=? AND s.token=? AND s.expires_at>?',
+          req.workspace,
+          req.user.id,
+          hash(req.cookies.relay_session || ''),
+          Date.now(),
+        )
+      : one(
+          'SELECT * FROM applications WHERE id=? AND token_hash=?',
+          req.application?.id,
+          hash(req.headers.authorization?.replace(/^Bearer /i, '') || ''),
+        );
+    if (!req.user && allowed) {
+      const settings = decode(allowed.settings);
+      allowed =
+        publicationAuthorized(allowed) &&
+        !settings.tokenRevoked &&
+        settings.tokenExpiresAt > Date.now() &&
+        settings.tokenScopes?.includes('read');
+    }
+    if (!allowed) {
+      clearInterval(timer);
+      res.end();
+      return;
+    }
     const events = all(
       'SELECT * FROM events WHERE run_id=? AND id>? ORDER BY id LIMIT 100',
       runId,
@@ -1096,16 +1122,17 @@ api.delete(
 );
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 15 * 1024 * 1024, files: 1 },
+  limits: { fileSize: 15 * 1024 * 1024, files: 1, fields: 10, parts: 11, fieldSize: 4096 },
 });
 api.post(
   '/collections/:cid/upload',
   requireRole('editor'),
+  localRateLimit({ limit: 10, windowMs: 60000 }),
   upload.single('file'),
   route(async (req, res) => {
     scoped('collections', req.params.cid, req.workspace);
     if (!req.file) throw new Error('Choose a document to upload');
-    const content = await parseDocument(req.file.buffer, req.file.originalname);
+    const content = await parseUpload(req.file.buffer, req.file.originalname);
     const sid = addSource(req.workspace, req.params.cid, req.file.originalname, content);
     audit(req.workspace, req.user.id, 'source.uploaded', sid);
     res.status(201).json({ id: sid });
@@ -1137,6 +1164,7 @@ api.post(
         String(req.body.query || ''),
         req.body.topK,
         req.body.options,
+        { kind: 'user', id: req.user.id },
       ),
     }),
   ),
@@ -1247,6 +1275,7 @@ api.post(
       0,
     );
     audit(req.workspace, req.user.id, 'invitation.created', iid);
+    recordInvitation(iid, req.user.id);
     res.status(201).json({ token, url: `${req.protocol}://${req.get('host')}/?invite=${token}` });
   }),
 );
@@ -1275,6 +1304,7 @@ api.put(
       req.params.uid,
     );
     audit(req.workspace, req.user.id, 'member.role.changed', req.params.uid);
+    revokeMemberDelegations(req.workspace, req.params.uid);
     res.json({ ok: true });
   }),
 );
@@ -1290,11 +1320,12 @@ api.delete(
     if (!m || m.role === 'owner' || (m.role === 'administrator' && req.role !== 'owner'))
       return res.status(403).json({ error: 'This member cannot be removed by your role' });
     exec('DELETE FROM members WHERE workspace_id=? AND user_id=?', req.workspace, req.params.uid);
+    revokeMemberDelegations(req.workspace, req.params.uid);
     audit(req.workspace, req.user.id, 'member.removed', req.params.uid);
     res.json({ ok: true });
   }),
 );
-api.get('/audit', (req, res) =>
+api.get('/audit', requireRole('administrator'), (req, res) =>
   res.json(
     all(
       'SELECT a.*,u.name AS user_name FROM audit a LEFT JOIN users u ON u.id=a.user_id WHERE a.workspace_id=? ORDER BY created_at DESC LIMIT 300',
@@ -1339,7 +1370,8 @@ api.get('/applications', (req, res) =>
 );
 api.post(
   '/applications',
-  requireRole('editor'),
+  requireRole('administrator'),
+  localRateLimit({ limit: 20, windowMs: 60000 }),
   route((req, res) => {
     const w = scoped('workflows', req.body.workflowId, req.workspace);
     const errors = validateGraph(decode(w.graph));
@@ -1354,6 +1386,10 @@ api.post(
     const token = crypto.randomBytes(32).toString('hex'),
       aid = id();
     assertNoSecrets(settings);
+    settings.tokenExpiresAt = Date.now() + 90 * 86400000;
+    settings.tokenRevoked = false;
+    settings.tokenScopes = ['invoke', 'read', 'webhook', 'mcp'];
+    settings.publisherId = req.user.id;
     exec(
       'INSERT INTO applications(id,workspace_id,workflow_id,version_id,name,settings,token_hash,created_at,graph_snapshot) VALUES(?,?,?,?,?,?,?,?,?)',
       aid,
@@ -1372,14 +1408,21 @@ api.post(
 );
 api.put(
   '/applications/:aid',
-  requireRole('editor'),
+  requireRole('administrator'),
   route((req, res) => {
     const a = scoped('applications', req.params.aid, req.workspace);
     assertNoSecrets(req.body.settings);
+    const settings = {
+      ...(req.body.settings || decode(a.settings)),
+      tokenExpiresAt: decode(a.settings).tokenExpiresAt,
+      tokenRevoked: decode(a.settings).tokenRevoked,
+      tokenScopes: decode(a.settings).tokenScopes,
+      publisherId: decode(a.settings).publisherId,
+    };
     exec(
       'UPDATE applications SET name=?,settings=? WHERE id=?',
       req.body.name || a.name,
-      encode(req.body.settings || decode(a.settings)),
+      encode(settings),
       a.id,
     );
     if (req.body.publishLatest) {
@@ -1400,18 +1443,40 @@ api.put(
 );
 api.post(
   '/applications/:aid/rotate',
-  requireRole('editor'),
+  requireRole('administrator'),
   route((req, res) => {
     const a = scoped('applications', req.params.aid, req.workspace);
     const token = crypto.randomBytes(32).toString('hex');
-    exec('UPDATE applications SET token_hash=? WHERE id=?', hash(token), a.id);
+    const scopes = z
+      .array(z.enum(['invoke', 'read', 'webhook', 'mcp']))
+      .min(1)
+      .max(4)
+      .parse(req.body.scopes || ['invoke', 'read', 'webhook', 'mcp']);
+    const ttl = z
+      .number()
+      .int()
+      .min(1)
+      .max(90)
+      .parse(req.body.expiresInDays || 90);
+    exec(
+      'UPDATE applications SET token_hash=?,settings=? WHERE id=?',
+      hash(token),
+      encode({
+        ...decode(a.settings),
+        tokenExpiresAt: Date.now() + ttl * 86400000,
+        tokenRevoked: false,
+        tokenScopes: scopes,
+        publisherId: req.user.id,
+      }),
+      a.id,
+    );
     audit(req.workspace, req.user.id, 'application.token.rotated', a.id);
     res.json({ token });
   }),
 );
 api.delete(
   '/applications/:aid',
-  requireRole('editor'),
+  requireRole('administrator'),
   route((req, res) => {
     scoped('applications', req.params.aid, req.workspace);
     exec('DELETE FROM applications WHERE id=?', req.params.aid);
@@ -1419,18 +1484,53 @@ api.delete(
     res.json({ ok: true });
   }),
 );
+api.post(
+  '/applications/:aid/revoke',
+  requireRole('administrator'),
+  route((req, res) => {
+    const a = scoped('applications', req.params.aid, req.workspace);
+    exec(
+      'UPDATE applications SET settings=? WHERE id=?',
+      encode({ ...decode(a.settings), tokenRevoked: true }),
+      a.id,
+    );
+    audit(req.workspace, req.user.id, 'application.token.revoked', a.id);
+    res.json({ ok: true });
+  }),
+);
 function appAccess(req, res, next) {
   const a = one('SELECT * FROM applications WHERE id=?', req.params.aid);
   if (!a) return res.status(404).json({ error: 'Application was not found' });
+  if (!publicationAuthorized(a))
+    return res.status(403).json({ error: 'Publication requires administrator review' });
   const token = req.headers.authorization?.replace(/^Bearer /i, '') || '';
-  const valid = token && hash(token) === a.token_hash;
   const settings = decode(a.settings);
+  const valid =
+    token &&
+    hash(token) === a.token_hash &&
+    !settings.tokenRevoked &&
+    Number.isFinite(settings.tokenExpiresAt) &&
+    settings.tokenExpiresAt > Date.now();
+  if (token && !valid)
+    return res.status(401).json({ error: 'Application token is invalid, expired or revoked' });
+  const permission = req.path.includes('/runs/')
+    ? 'read'
+    : req.path.endsWith('/webhook')
+      ? 'webhook'
+      : req.path.endsWith('/mcp')
+        ? 'mcp'
+        : 'invoke';
+  if (valid && !settings.tokenScopes?.includes(permission))
+    return res.status(403).json({ error: 'Application token lacks the required scope' });
   if (!valid && !(req.path.startsWith('/apps/') && settings.public))
     return res.status(401).json({ error: 'An application access token is required' });
+  if (!valid && req.params.rid && !guestRunAccess(req, req.params.rid))
+    return res.status(403).json({ error: 'This browser cannot read that run' });
+  req.publicGuest = !valid;
   req.application = { ...a, settings };
   next();
 }
-function queueApplication(a, input, conversationId = null) {
+function queueApplication(a, input, conversationId = null, publicGuest = false) {
   const version = one('SELECT graph FROM versions WHERE id=?', a.version_id);
   const count = one(
     'SELECT count(*) AS count FROM runs WHERE workspace_id=? AND created_at>?',
@@ -1450,6 +1550,7 @@ function queueApplication(a, input, conversationId = null) {
     input,
     mode: a.settings.mode || 'preview',
     conversationId,
+    actor: { applicationId: a.id, tokenHash: publicGuest ? null : a.token_hash, publicGuest },
   });
   exec('UPDATE runs SET application_id=? WHERE id=?', a.id, runId);
   return { id: runId, status: 'queued', events: `/api/apps/${a.id}/runs/${runId}/events` };
@@ -1460,7 +1561,10 @@ function invoke(req, res) {
     a,
     Object.hasOwn(req.body, 'input') ? req.body.input : req.body,
     req.body.conversationId || null,
+    req.publicGuest,
   );
+  if (req.publicGuest) issueGuestRun(res, a.id, result.id);
+  if (req.path.endsWith('/webhook')) audit(a.workspace_id, 'application', 'webhook.accepted', a.id);
   res.status(202).json(result);
 }
 registerApplicationMcp(app, appAccess, {
@@ -1472,7 +1576,14 @@ registerApplicationMcp(app, appAccess, {
   },
 });
 app.post('/api/apps/:aid/invoke', appAccess, route(invoke));
-app.post('/api/apps/:aid/webhook', appAccess, route(invoke));
+app.post(
+  '/api/apps/:aid/webhook',
+  appAccess,
+  route((req, res) => {
+    consumeWebhook(req.application, req.headers['idempotency-key']);
+    invoke(req, res);
+  }),
+);
 app.get(
   '/api/apps/:aid/runs/:rid',
   appAccess,
@@ -1495,6 +1606,7 @@ app.get(
 );
 app.get(
   '/apps/:aid/meta',
+  appAccess,
   route((req, res) => {
     const a = one('SELECT * FROM applications WHERE id=?', req.params.aid);
     if (!a) return res.status(404).json({ error: 'Application was not found' });
