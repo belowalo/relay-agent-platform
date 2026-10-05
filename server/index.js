@@ -1540,7 +1540,9 @@ if (fs.existsSync(dist)) {
   app.use(express.static(dist));
   app.get('/{*path}', (req, res) => {
     if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Endpoint not found' });
-    res.sendFile(path.join(dist, 'index.html'));
+    // Anchor the trusted root so a hidden parent directory (e.g. .codex worktrees)
+    // is not interpreted as a requested dotfile by Express/send.
+    res.sendFile('index.html', { root: dist });
   });
 } else
   app.get('/apps/:aid', (req, res) => res.redirect(`http://127.0.0.1:5173/apps/${req.params.aid}`));

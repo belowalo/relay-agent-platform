@@ -48,6 +48,8 @@ See `.env.production.example` for commented **nonsecret** configuration. Local d
 
 The branch includes actual Postgres transactions/migrations, RLS outbox enqueue, BullMQ transport, versioned secret-envelope encryption, local blob storage, runtime validation and async context propagation. The original application's synchronous domain repositories remain local. Domain conversion, outbox dispatch/recovery, vector indexes, shared object storage, policy-authorized secret resolution, budgets, native connectors and observability exporters are assigned work, not finished features.
 
+The foundation also fixes the SPA fallback in `server/index.js` to anchor `index.html` at its trusted distribution root. Absolute `sendFile` paths beneath hidden parent directories such as `.codex` were rejected by Express's dotfile handling, breaking hosted chat/widget pages in managed worktrees. Preserve this fix when converting the production bootstrap.
+
 Docker CLI is installed on the inspected Windows host, but its Linux engine was unavailable during initial inspection. Infrastructure tests are also run using PostgreSQL/Redis GitHub CI services. Operations owns enabling and exercising a complete deployment; no paid resources or external application deployment were created by the foundation work.
 
 ## Integration responsibilities

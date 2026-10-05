@@ -54,12 +54,17 @@ export async function createLocalBlobStore(root, { maximumBytes = 15 * 1024 * 10
       )
         throw new PlatformError('VALIDATION_ERROR', 'Blob size or content type is invalid.');
       const filename = await target(context, key, true);
+      const temporary = path.join(path.dirname(filename), '.upload-' + crypto.randomUUID());
       try {
-        await fs.writeFile(filename, data, { flag: 'wx', mode: 0o600 });
+        await fs.writeFile(temporary, data, { flag: 'wx', mode: 0o600 });
+        // Publish completely written contents without replacing an existing immutable key.
+        await fs.link(temporary, filename);
       } catch (error) {
         if (error.code === 'EEXIST')
           throw new PlatformError('CONFLICT', 'Blob keys are immutable.');
         throw error;
+      } finally {
+        await fs.rm(temporary, { force: true });
       }
       return {
         workspaceId: context.workspaceId,
