@@ -13,8 +13,8 @@
     "test": "node --test --test-concurrency=1 tests/*.test.js",
     "test:browser": "playwright test",
     "check": "npm run build && npm test",
-    "format": "prettier --write src server/*.js server/foundation tests sdk/javascript/*.mjs bin/*.mjs vite.config.ts playwright.config.ts README.md CONTRIBUTING.md SECURITY.md docs/*.md docs/production .github/workflows/*.yml",
-    "format:check": "prettier --check src server/*.js server/foundation tests sdk/javascript/*.mjs bin/*.mjs vite.config.ts playwright.config.ts README.md CONTRIBUTING.md SECURITY.md docs/*.md docs/production .github/workflows/*.yml",
+    "format": "prettier --write src server/*.js server/foundation server/observability deploy tests sdk/javascript/*.mjs bin/*.mjs vite.config.ts playwright.config.ts README.md CONTRIBUTING.md SECURITY.md docs/*.md docs/production .github/workflows/*.yml",
+    "format:check": "prettier --check src server/*.js server/foundation server/observability deploy tests sdk/javascript/*.mjs bin/*.mjs vite.config.ts playwright.config.ts README.md CONTRIBUTING.md SECURITY.md docs/*.md docs/production .github/workflows/*.yml",
     "worker": "node server/worker.js",
     "start:api": "node server/index.js",
     "foundation:config": "node bin/foundation.mjs config",
@@ -22,7 +22,10 @@
     "foundation:probe": "node bin/foundation.mjs probe",
     "foundation:types": "tsc --ignoreConfig --noEmit --strict --skipLibCheck server/foundation/ports.d.ts",
     "test:foundation": "node --test tests/foundation.test.js",
-    "test:services": "node bin/test-services.mjs"
+    "test:services": "node bin/test-services.mjs",
+    "test:operations": "node --test tests/operations.test.js",
+    "operations:init": "node bin/operations-init.mjs",
+    "operations:qualify": "node bin/operations-qualify.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.0",

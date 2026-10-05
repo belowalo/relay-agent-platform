@@ -1,0 +1,56 @@
+groups:
+  - name: relay
+    rules:
+      - alert: RelayUnavailable
+        expr: up{job="relay"} == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          {
+            summary: Relay scrape unavailable,
+            runbook: 'docs/production/OPERATIONS-RUNBOOKS.md#databasequeue-outage',
+          }
+      - alert: RelayDependencyUnavailable
+        expr: relay_dependency_ready == 0
+        for: 30s
+        labels: { severity: critical }
+        annotations: { summary: Relay dependency unavailable }
+      - alert: RelayErrorRate
+        expr: sum(rate(relay_operations_total{status="error"}[5m])) / clamp_min(sum(rate(relay_operations_total[5m])), 0.001) > 0.05
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: Relay operation error ratio exceeds five percent }
+      - alert: RelayApiLatency
+        expr: histogram_quantile(0.95, sum by (le) (rate(relay_operation_duration_seconds_bucket{kind="api"}[5m]))) > 0.3
+        for: 10m
+        labels: { severity: warning }
+        annotations: { summary: API P95 exceeds 300ms }
+      - alert: RelayQueueAge
+        expr: relay_queue_age_seconds > 120
+        for: 2m
+        labels: { severity: warning }
+        annotations: { summary: Oldest waiting job exceeds two minutes }
+      - alert: RelayWorkerStale
+        expr: relay_worker_heartbeat_age_seconds > 60
+        for: 1m
+        labels: { severity: critical }
+        annotations: { summary: Worker heartbeat stale }
+      - alert: RelayRetryStorm
+        expr: sum(rate({__name__=~"relay_retries_.*"}[5m])) > 1
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: More than one retry per second }
+      - alert: RelayBackupStale
+        expr: relay_backup_age_seconds > 3600
+        for: 5m
+        labels: { severity: critical }
+        annotations: { summary: Latest verified backup older than one hour }
+      - alert: RelayDiskLow
+        expr: relay_disk_free_bytes < 1073741824
+        for: 1m
+        labels: { severity: critical }
+        annotations: { summary: Less than one GiB free disk space }
+      - alert: RelayTelemetryDropped
+        expr: increase(relay_telemetry_dropped_total[5m]) > 0
+        labels: { severity: warning }
+        annotations: { summary: Trace exporter dropping spans }

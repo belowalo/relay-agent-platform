@@ -1,0 +1,46 @@
+name: Production operations
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  container-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: '24', cache: npm }
+      - run: npm ci
+      - run: npm run test:operations
+      - run: npm audit --audit-level=high
+      - run: npm run operations:qualify
+      - name: SBOM and release artifacts
+        if: success()
+        run: |
+          npm sbom --sbom-format cyclonedx > operations-results/sbom.cdx.json
+          docker image inspect relay-operations:local --format '{{.Id}}' > operations-results/relay-image-id.txt
+          docker save relay-operations:local | gzip > operations-results/relay-image.tar.gz
+          tar --exclude='qualification' -czf operations-results/deployment-package.tar.gz deploy bin/backup.mjs bin/healthcheck.mjs bin/operations-init.mjs bin/production-entrypoint.mjs docs/production/OPERATIONS.md docs/production/OPERATIONS-RUNBOOKS.md
+          cd operations-results
+          sha256sum relay-image.tar.gz deployment-package.tar.gz sbom.cdx.json > SHA256SUMS
+      - name: Scan release container
+        if: success()
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/operations-results:/results" aquasec/trivy:0.67.2@sha256:e2b22eac59c02003d8749f5b8d9bd073b62e30fefaef5b7c8371204e0a4b0c08 image --format json --output /results/vulnerabilities.json relay-operations:local
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.67.2@sha256:e2b22eac59c02003d8749f5b8d9bd073b62e30fefaef5b7c8371204e0a4b0c08 image --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed relay-operations:local
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: production-operations-${{ github.sha }}
+          path: operations-results/
+          retention-days: 14
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc
+        env: { GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}' }
