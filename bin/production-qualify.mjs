@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { measureProductionWorkload } from './production-load.mjs';
+import { verifyProductionBrowser } from './production-browser.mjs';
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'relay-integrated-'));
 const project = 'relay-integrated-' + crypto.randomBytes(4).toString('hex');
 const results = path.resolve(process.env.PRODUCTION_RESULTS || 'production-results');
@@ -164,7 +165,7 @@ try {
     mem_limit: 128m
     cpus: 0.25
   proxy:
-    ports: !override ['127.0.0.1::8443']
+    ports: !override ['127.0.0.1:443:8443']
     volumes: ['${path.resolve('deploy/qualification/Caddyfile').replaceAll('\\', '/')}:/etc/caddy/Caddyfile:ro']
   backup:
     environment: { BACKUP_QUIESCED: 'true', RELEASE_COMMIT: '${env.RELEASE_COMMIT}' }
@@ -172,7 +173,7 @@ try {
   );
   base.push('-f', override);
   await drill('build-migrate-start-actual-application', async () => {
-    await compose('build', 'api', 'backup', 'database', 'proxy');
+    await compose('build', 'api', 'backup', 'database', 'proxy', 'alertmanager');
     await compose(
       'up',
       '-d',
@@ -184,6 +185,29 @@ try {
       'qualification-model',
     );
     await compose('run', '--rm', 'migrate');
+    const ownerPassword = path.join(root, 'owner-password');
+    await fs.writeFile(ownerPassword, 'Disposable-provisioned-2026', { mode: 0o444 });
+    const provisioned = JSON.parse(
+      (
+        await compose(
+          'run',
+          '--rm',
+          '-v',
+          `${ownerPassword}:/run/owner-password:ro`,
+          '-e',
+          'PROVISION_EMAIL=provisioned@relay.test',
+          '-e',
+          'PROVISION_NAME=Private provisioned owner',
+          '-e',
+          'PROVISION_PASSWORD_FILE=/run/owner-password',
+          'migrate',
+          'node',
+          'bin/production-admin.mjs',
+          'create-owner',
+        )
+      ).stdout.trim(),
+    );
+    assert.equal(provisioned.provisioned, true);
     await compose(
       'run',
       '--rm',
@@ -513,6 +537,9 @@ try {
       JSON.stringify(report.workload, null, 2),
     );
     assert.ok(report.workload.passed, JSON.stringify({ ...report.workload, resources: undefined }));
+  });
+  await drill('actual-production-browser-journeys', async () => {
+    report.browser = await verifyProductionBrowser({ results });
   });
   for (const dependency of ['database', 'queue', 'storage'])
     await drill(dependency + '-readiness-and-recovery', async () => {

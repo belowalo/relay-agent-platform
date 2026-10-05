@@ -90,7 +90,10 @@ function Auth({ onComplete, notify }: { onComplete: () => void; notify: PageProp
     [options, setOptions] = useState<any>({});
   useEffect(() => {
     api('/api/auth/options')
-      .then(setOptions)
+      .then((v) => {
+        setOptions(v);
+        if (v.registration === false) setRegister(false);
+      })
       .catch(() => {});
   }, []);
   async function submit(e: React.FormEvent<HTMLFormElement>) {
@@ -247,6 +250,7 @@ function Auth({ onComplete, notify }: { onComplete: () => void; notify: PageProp
         <p className="auth-switch">
           {register ? 'Already have an account?' : 'New to Relay?'}{' '}
           <button
+            disabled={options.registration === false}
             onClick={() => {
               setRegister(!register);
               setChallenge('');

@@ -25,6 +25,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with: { node-version: '24', cache: npm }
       - run: npm ci
+      - run: npx playwright install --with-deps chromium
       - run: node bin/production-qualify.mjs
         env: { PRODUCTION_SOAK: "${{ inputs.soak && 'true' || 'false' }}" }
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
@@ -70,7 +71,7 @@ jobs:
             report_id=$(printf '%s' "$image" | sha256sum | cut -c1-12)
             docker run --rm -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/operations-results/infrastructure:/results" aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa image --format json --output "/results/$report_id.json" "$image"
           done < operations-results/infrastructure/images.txt
-          for image in relay-postgres:local relay-backup:local; do
+          for image in relay-postgres:local relay-backup:local relay-alertmanager:local; do
             docker run --rm -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa image --exit-code 1 --ignore-unfixed --severity HIGH,CRITICAL "$image"
           done
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f

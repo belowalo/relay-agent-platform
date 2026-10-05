@@ -209,7 +209,8 @@ services:
     cpus: 0.5
     restart: unless-stopped
   alertmanager:
-    image: prom/alertmanager@sha256:e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a
+    image: relay-alertmanager:local
+    build: { context: .., dockerfile: deploy/Dockerfile.alertmanager }
     volumes: ['./observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro']
     networks: [private, egress]
     mem_limit: 128m
