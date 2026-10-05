@@ -5,19 +5,16 @@ RUN npm ci
 COPY . .
 RUN npm run build && npm prune --omit=dev
 
-FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6
-RUN apt-get update && apt-get install --no-install-recommends -y libpcre2-8-0=10.42-1+deb12u2 \
-    && rm -rf /var/lib/apt/lists/* /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
-    && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg
-ENV NODE_ENV=production HOST=0.0.0.0 PORT=4311
+FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:9eeb7f5887d0e239e78264b06f7f11d2e14be534050481803a9e4728fcdd278e
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=4311 PATH=/nodejs/bin:/usr/local/bin:/usr/bin:/bin
 WORKDIR /app
-COPY --from=build --chown=node:node /app/node_modules ./node_modules
-COPY --from=build --chown=node:node /app/dist ./dist
-COPY --from=build --chown=node:node /app/server ./server
-COPY --from=build --chown=node:node /app/bin ./bin
-COPY --from=build --chown=node:node /app/deploy/qualification ./deploy/qualification
-COPY --from=build --chown=node:node /app/package.json ./package.json
-USER node
+COPY --from=build --chown=1000:1000 /app/node_modules ./node_modules
+COPY --from=build --chown=1000:1000 /app/dist ./dist
+COPY --from=build --chown=1000:1000 /app/server ./server
+COPY --from=build --chown=1000:1000 /app/bin ./bin
+COPY --from=build --chown=1000:1000 /app/deploy/qualification ./deploy/qualification
+COPY --from=build --chown=1000:1000 /app/package.json ./package.json
+USER 1000:1000
 EXPOSE 4311
 HEALTHCHECK --interval=10s --timeout=4s CMD ["node", "bin/healthcheck.mjs"]
 CMD ["node", "bin/production-entrypoint.mjs"]

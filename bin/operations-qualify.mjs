@@ -15,6 +15,7 @@ const report = {
   qualificationOnly: true,
   runtimeIntegrated: false,
   platform: `${os.platform()}/${os.arch()}`,
+  host: { cpuCount: os.availableParallelism(), totalMemoryBytes: os.totalmem() },
   startedAt: new Date().toISOString(),
   drills: [],
 };
