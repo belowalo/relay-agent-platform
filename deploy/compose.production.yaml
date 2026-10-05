@@ -181,6 +181,7 @@ services:
     restart: unless-stopped
   backup:
     profiles: [tools]
+    image: relay-backup:local
     user: '${BACKUP_UID:-1000}:${BACKUP_GID:-1000}'
     build: { context: .., dockerfile: deploy/Dockerfile.backup }
     entrypoint: [node, bin/backup.mjs]
@@ -200,7 +201,7 @@ services:
     volumes: ['${BACKUP_PATH:?Private backup directory required}:/backups']
     networks: [private]
     read_only: true
-    tmpfs: ['/tmp:size=1g,mode=0700']
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=1g,mode=1777']
     mem_limit: 1g
     cpus: 1
 networks:

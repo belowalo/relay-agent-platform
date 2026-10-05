@@ -22,8 +22,8 @@ jobs:
         run: |
           npm sbom --sbom-format cyclonedx > operations-results/sbom.cdx.json
           docker image inspect relay-operations:local --format '{{.Id}}' > operations-results/relay-image-id.txt
-          docker save relay-operations:local relay-proxy:local | gzip > operations-results/relay-image.tar.gz
-          tar --exclude='qualification' -czf operations-results/deployment-package.tar.gz deploy bin/backup.mjs bin/healthcheck.mjs bin/operations-init.mjs bin/production-entrypoint.mjs docs/production/OPERATIONS.md docs/production/OPERATIONS-RUNBOOKS.md
+          docker save relay-operations:local relay-proxy:local relay-backup:local | gzip > operations-results/relay-image.tar.gz
+          git archive --format=tar HEAD | gzip > operations-results/deployment-package.tar.gz
           cd operations-results
           sha256sum relay-image.tar.gz deployment-package.tar.gz sbom.cdx.json > SHA256SUMS
       - name: Scan release container

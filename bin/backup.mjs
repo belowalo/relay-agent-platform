@@ -44,6 +44,8 @@ export async function backupCommand(command, filename) {
         ['--format=custom', '--no-owner', '--no-acl', '--file', path.join(temp, 'database.dump')],
         pgEnv,
       );
+      if ((await fs.stat(path.join(temp, 'database.dump'))).size > 256 * 1024 * 1024)
+        throw new Error('Database backup exceeds support limit');
       const database = await fs.readFile(path.join(temp, 'database.dump'));
       const objects = [];
       let total = database.length;
@@ -96,6 +98,8 @@ export async function backupCommand(command, filename) {
       };
     }
     if (!['verify', 'restore'].includes(command)) throw new Error('Invalid command');
+    if ((await fs.stat(output)).size > 400 * 1024 * 1024)
+      throw new Error('Backup exceeds support limit');
     const encrypted = await fs.readFile(output);
     if (encrypted.length > 400 * 1024 * 1024 || encrypted.subarray(0, 8).toString() !== 'RELAYBK1')
       throw new Error('Invalid backup');
@@ -122,6 +126,7 @@ export async function backupCommand(command, filename) {
     if (command === 'restore') {
       if (process.env.RESTORE_ALLOW_EMPTY_TARGET !== 'true')
         throw new Error('Explicit empty-target restore required');
+      if ((await s3.list()).length !== 0) throw new Error('Restore bucket must be empty');
       // No --clean: existing conflicting schema objects cause failure; target provisioning is operator-owned.
       await fs.writeFile(path.join(temp, 'database.dump'), database, { mode: 0o600 });
       await run(

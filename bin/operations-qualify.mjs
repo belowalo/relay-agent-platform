@@ -208,6 +208,21 @@ try {
     assert.match(logs, /relay.provider/);
     assert.match(logs, /relay.retrieval/);
     assert.match(logs, /traceId|Trace ID/);
+    const records = logs
+      .split('\n')
+      .flatMap((line) => {
+        try {
+          return [JSON.parse(line.slice(line.indexOf('{')))];
+        } catch {
+          return [];
+        }
+      })
+      .filter((record) => record.event === 'span_completed');
+    const job = records.find((record) => record.kind === 'job');
+    assert.ok(job);
+    for (const kind of ['api', 'provider', 'tool', 'retrieval'])
+      assert.ok(records.some((record) => record.kind === kind && record.traceId === job.traceId));
+    report.traceCorrelation = { apiJobProviderToolRetrievalSharedTrace: true };
     await fs.writeFile(path.join(reportDir, 'observability.log'), sanitize(logs));
   });
   await drill('provider-outage-and-quota', async () => {
@@ -294,6 +309,20 @@ try {
     assert.notEqual(result.code, 0);
     await fs.writeFile(path.join(root, 'secrets', 'backup_key'), original);
     await fs.chmod(path.join(root, 'secrets', 'backup_key'), 0o444);
+  });
+  await drill('backup-tamper-rejected', async () => {
+    const file = path.join(root, 'backups', 'rehearsal.relay-backup');
+    const original = await fs.readFile(file);
+    const tampered = Buffer.from(original);
+    tampered[tampered.length - 1] ^= 1;
+    await fs.writeFile(file, tampered);
+    const result = await run(
+      'docker',
+      [...base, 'run', '--rm', 'backup', 'verify', 'rehearsal.relay-backup'],
+      { allowFailure: true },
+    );
+    assert.notEqual(result.code, 0);
+    await fs.writeFile(file, original);
   });
   await drill('restore-empty-database-and-blobs', async () => {
     const started = Date.now();
