@@ -363,9 +363,11 @@ try {
       '-c',
       'GRANT USAGE ON SCHEMA relay TO relay_app; GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA relay TO relay_app;',
     );
-    const appUrl = (await fs.readFile(path.join(root, 'secrets', 'app_database_url'), 'utf8'))
-      .trim()
-      .replace('/relay', '/relay_restore');
+    const restoredDatabaseUrl = new URL(
+      (await fs.readFile(path.join(root, 'secrets', 'app_database_url'), 'utf8')).trim(),
+    );
+    restoredDatabaseUrl.pathname = '/relay_restore';
+    const appUrl = restoredDatabaseUrl.toString();
     await fs.chmod(path.join(root, 'secrets', 'app_database_url'), 0o600);
     await fs.writeFile(path.join(root, 'secrets', 'app_database_url'), appUrl);
     await fs.chmod(path.join(root, 'secrets', 'app_database_url'), 0o444);

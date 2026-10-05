@@ -15,6 +15,7 @@ jobs:
         with: { node-version: '24', cache: npm }
       - run: npm ci
       - run: npm run test:operations
+      - run: sh -n deploy/backup.sh && sh -n deploy/postgres/init.sh && sh -n deploy/redis-start.sh
       - run: npm audit --audit-level=high
       - run: npm run operations:qualify
       - name: SBOM and release artifacts
