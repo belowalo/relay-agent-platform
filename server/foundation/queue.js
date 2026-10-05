@@ -71,11 +71,20 @@ export function createJobQueue(config, { onError = () => {} } = {}) {
         retryStrategy: (times) => Math.min(times * 250, 5000),
       });
       workerConnection.on('error', () => onError('queue.worker.connection'));
-      const worker = new Worker('jobs', async (entry) => handler(jobSchema.parse(entry.data)), {
-        connection: workerConnection,
-        prefix: config.queuePrefix,
-        concurrency: config.workerConcurrency,
-      });
+      const worker = new Worker(
+        'jobs',
+        async (entry) => {
+          const reference = jobSchema.parse(entry.data);
+          await handler(reference);
+          // Business output belongs in PostgreSQL; never persist handler output in Redis.
+          return { id: reference.id };
+        },
+        {
+          connection: workerConnection,
+          prefix: config.queuePrefix,
+          concurrency: config.workerConcurrency,
+        },
+      );
       worker.on('error', () => onError('queue.worker'));
       const handle = {
         async close() {

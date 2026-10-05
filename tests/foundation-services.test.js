@@ -167,6 +167,7 @@ test(
         count++;
         assert.deepEqual(received, reference);
         complete();
+        return { secret: 'private-worker-result-must-not-reach-redis' };
       });
       await queue.publish(reference);
       await queue.publish(reference);
@@ -181,6 +182,9 @@ test(
       assert.equal(count, 1);
       await assert.rejects(queue.publish({ ...reference, secret: 'never-publish' }));
       await worker.close();
+      const persistedResult = await cleanup.hget(`${prefix}:jobs:${reference.id}`, 'returnvalue');
+      assert.ok(persistedResult && !persistedResult.includes('private-worker-result'));
+      assert.deepEqual(JSON.parse(persistedResult), { id: reference.id });
     } finally {
       await queue.close();
       let cursor = '0';
