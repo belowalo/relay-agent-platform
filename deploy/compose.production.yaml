@@ -80,7 +80,9 @@ services:
       <<: *env
       ENGINE_ROLE: worker
   proxy:
-    image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    image: relay-proxy:local
+    build: { context: .., dockerfile: deploy/Dockerfile.proxy }
+    user: '1000:1000'
     restart: unless-stopped
     ports: ['${TLS_BIND:-127.0.0.1}:8443:8443']
     environment: { RELAY_DOMAIN: '${RELAY_DOMAIN:?Domain required}' }

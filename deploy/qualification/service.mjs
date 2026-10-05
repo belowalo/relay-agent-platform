@@ -171,14 +171,12 @@ app.post('/ops/fault/:kind', async (req, res) => {
     );
   } catch {
     telemetry.retry(kind === 'disk' ? 'storage' : 'provider');
-    return res
-      .status(kind === 'quota' ? 429 : 503)
-      .json({
-        error: {
-          code: kind === 'quota' ? 'RATE_LIMITED' : 'DEPENDENCY_UNAVAILABLE',
-          requestId: req.requestId,
-        },
-      });
+    return res.status(kind === 'quota' ? 429 : 503).json({
+      error: {
+        code: kind === 'quota' ? 'RATE_LIMITED' : 'DEPENDENCY_UNAVAILABLE',
+        requestId: req.requestId,
+      },
+    });
   }
   res.sendStatus(500);
 });
