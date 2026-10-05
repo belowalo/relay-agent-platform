@@ -43,7 +43,7 @@ export async function startProduction({
       },
       async (s) => {
         const row = await s.one(
-          "SELECT EXISTS(SELECT 1 FROM relay.schema_migrations WHERE name='0103-schedules.sql') AS ready",
+          "SELECT EXISTS(SELECT 1 FROM relay.schema_migrations WHERE name='0104-runtime-integrity.sql') AS ready",
         );
         if (!row?.ready) fail('RUNTIME_SCHEMA_NOT_READY');
       },
