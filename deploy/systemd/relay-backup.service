@@ -1,0 +1,10 @@
+[Unit]
+Description=Relay quiesced encrypted backup and off-host verification
+Requires=docker.service
+After=docker.service
+[Service]
+Type=oneshot
+ExecStart=/opt/relay/deploy/backup.sh
+TimeoutStartSec=15min
+UMask=0077
+Nice=10

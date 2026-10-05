@@ -13,8 +13,8 @@
     "test": "node --test --test-concurrency=1 tests/*.test.js",
     "test:browser": "playwright test",
     "check": "npm run build && npm test",
-    "format": "prettier --write src server/*.js server/foundation server/runtime server/security server/knowledge server/connectors tests sdk/javascript/*.mjs bin/*.mjs vite.config.ts playwright.config.ts README.md CONTRIBUTING.md SECURITY.md docs/*.md docs/production .github/workflows/*.yml",
-    "format:check": "prettier --check src server/*.js server/foundation server/runtime server/security server/knowledge server/connectors tests sdk/javascript/*.mjs bin/*.mjs vite.config.ts playwright.config.ts README.md CONTRIBUTING.md SECURITY.md docs/*.md docs/production .github/workflows/*.yml",
+    "format": "prettier --write src server/*.js server/foundation server/runtime server/security server/knowledge server/connectors server/observability tests sdk/javascript/*.mjs bin/*.mjs vite.config.ts playwright.config.ts README.md CONTRIBUTING.md SECURITY.md docs/*.md docs/production .github/workflows/*.yml",
+    "format:check": "prettier --check src server/*.js server/foundation server/runtime server/security server/knowledge server/connectors server/observability tests sdk/javascript/*.mjs bin/*.mjs vite.config.ts playwright.config.ts README.md CONTRIBUTING.md SECURITY.md docs/*.md docs/production .github/workflows/*.yml",
     "worker": "node server/worker.js",
     "start:api": "node server/index.js",
     "foundation:config": "node bin/foundation.mjs config",
@@ -23,6 +23,9 @@
     "foundation:types": "tsc --ignoreConfig --noEmit --strict --skipLibCheck server/foundation/ports.d.ts",
     "test:foundation": "node --test tests/foundation.test.js",
     "test:services": "node bin/test-services.mjs",
+    "test:operations": "node --test tests/operations.test.js",
+    "operations:init": "node bin/operations-init.mjs",
+    "operations:qualify": "node bin/operations-qualify.mjs",
     "test:connectors": "node --test tests/connectors.test.js tests/connector-models.test.js tests/connector-mcp.test.js tests/connector-postgres.test.js tests/connector-routes.test.js",
     "connectors:probe": "node bin/connector-probe.mjs",
     "connectors:types": "tsc --ignoreConfig --noEmit --strict --skipLibCheck server/connectors/ports.d.ts",
@@ -38,7 +41,6 @@
     "test:runtime": "node --test tests/production-runtime.test.js"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1146.0",
     "@huggingface/transformers": "^4.3.0",
     "@modelcontextprotocol/sdk": "^1.32.0",
     "@xyflow/react": "^12.12.0",
@@ -62,11 +64,11 @@
     "react-dom": "^19.3.0",
     "undici": "^7.30.0",
     "zod": "^4.6.5",
+    "@aws-sdk/client-s3": "^3.1146.0",
     "csv-parse": "7.0.3",
     "parse5": "8.0.1"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.5.8",
     "@playwright/test": "^1.63.0",
     "@types/node": "^26.6.4",
     "@types/react": "^19.3.0",
@@ -76,6 +78,7 @@
     "prettier": "^3.9.9",
     "typescript": "^7.0.2",
     "vite": "^8.3.2",
+    "@electric-sql/pglite": "0.5.8",
     "@electric-sql/pglite-pgvector": "0.0.9"
   }
 }

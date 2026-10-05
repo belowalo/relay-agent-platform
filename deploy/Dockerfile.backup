@@ -1,0 +1,16 @@
+FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS node
+FROM postgres:16-trixie@sha256:1a6ab3f5345eb6dbe04a1349529caabdb0ab09293a09590fad07b2246bfa4b54
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade \
+       libpcre2-8-0=10.46-1~deb13u3 \
+       libssl3t64=3.5.7-1~deb13u3 \
+       openssl=3.5.7-1~deb13u3 \
+       openssl-provider-legacy=3.5.7-1~deb13u3 \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -f /usr/local/bin/gosu
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+WORKDIR /app
+COPY bin/backup.mjs bin/backup.mjs
+COPY server/observability/s3.js server/observability/s3.js
+USER postgres
+ENTRYPOINT ["node", "bin/backup.mjs"]

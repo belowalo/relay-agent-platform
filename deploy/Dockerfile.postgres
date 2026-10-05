@@ -1,0 +1,8 @@
+FROM pgvector/pgvector:pg16-trixie@sha256:40d828eda66737aaacb934387a337babf1455ebd56e9bdd13fc08e211257c972
+# Volume directories are initialized for postgres by the upstream image.
+# Run directly as postgres: no root-to-user helper or Go runtime is needed.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade libpcre2-8-0=10.46-1~deb13u3 \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -f /usr/local/bin/gosu
+USER postgres

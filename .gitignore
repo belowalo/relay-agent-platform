@@ -9,3 +9,6 @@ playwright-report/
 *.log
 __pycache__/
 *.pyc
+
+.operations-private/
+operations-results/

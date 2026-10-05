@@ -1,0 +1,236 @@
+name: relay-production
+x-app: &app
+  image: ${RELAY_IMAGE:-relay-operations:local}
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile
+  init: true
+  user: '1000:1000'
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs: ['/tmp:rw,noexec,nosuid,size=256m,uid=1000,gid=1000']
+  mem_limit: 2g
+  cpus: 2
+  pids_limit: 256
+  stop_grace_period: 40s
+  restart: unless-stopped
+  logging: { driver: json-file, options: { max-size: 10m, max-file: '5' } }
+  networks: [private, egress]
+  secrets:
+    [app_database_url, redis_url, encryption_key, metrics_token, s3_access_key, s3_secret_key]
+  environment: &env
+    RELAY_PROFILE: production
+    NODE_ENV: production
+    HOST: 0.0.0.0
+    PORT: '4311'
+    ENGINE_ROLE: api
+    PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?HTTPS origin required}
+    COOKIE_SECURE: 'true'
+    ALLOW_PRIVATE_NETWORK: 'false'
+    DATABASE_URL_FILE: /run/secrets/app_database_url
+    REDIS_URL_FILE: /run/secrets/redis_url
+    ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+    ENCRYPTION_KEY_ID: primary
+    METRICS_TOKEN_FILE: /run/secrets/metrics_token
+    S3_ACCESS_KEY_ID_FILE: /run/secrets/s3_access_key
+    S3_SECRET_ACCESS_KEY_FILE: /run/secrets/s3_secret_key
+    S3_ENDPOINT: http://storage:9000
+    S3_INTERNAL_NETWORK: 'true'
+    S3_BUCKET: relay
+    S3_REGION: us-east-1
+    QUEUE_PREFIX: ${QUEUE_PREFIX:-relay-production}
+    SHUTDOWN_TIMEOUT_MS: '30000'
+    DATABASE_TIMEOUT_MS: '2000'
+    WORKER_CAPACITY: '8'
+    OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://collector:4318/v1/traces
+  depends_on:
+    database: { condition: service_healthy }
+    queue: { condition: service_healthy }
+  healthcheck:
+    test: [CMD, node, bin/healthcheck.mjs]
+    interval: 10s
+    timeout: 4s
+    retries: 6
+    start_period: 20s
+services:
+  migrate:
+    profiles: [tools]
+    image: ${RELAY_IMAGE:-relay-operations:local}
+    command: [node, bin/production-migrate.mjs]
+    environment:
+      {
+        PGHOST: database,
+        PGUSER: relay_owner,
+        PGDATABASE: relay,
+        PGPASSWORD_FILE: /run/secrets/database_password,
+      }
+    secrets: [database_password]
+    networks: [private]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    cpus: 1
+  api:
+    <<: *app
+  worker:
+    <<: *app
+    environment:
+      <<: *env
+      ENGINE_ROLE: worker
+  proxy:
+    image: relay-proxy:local
+    build: { context: .., dockerfile: deploy/Dockerfile.proxy }
+    user: '1000:1000'
+    restart: unless-stopped
+    ports: ['${TLS_BIND:-127.0.0.1}:8443:8443']
+    environment: { RELAY_DOMAIN: '${RELAY_DOMAIN:?Domain required}' }
+    volumes: ['./Caddyfile:/etc/caddy/Caddyfile:ro', 'tls:/data', 'caddy-config:/config']
+    networks: [private, egress]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 0.5
+  database:
+    image: relay-postgres:local
+    build: { context: .., dockerfile: deploy/Dockerfile.postgres }
+    user: postgres
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      {
+        POSTGRES_DB: relay,
+        POSTGRES_USER: relay_owner,
+        POSTGRES_PASSWORD_FILE: /run/secrets/database_password,
+      }
+    secrets: [database_password, app_database_password]
+    volumes:
+      [
+        'postgres:/var/lib/postgresql/data',
+        './postgres/init.sh:/docker-entrypoint-initdb.d/10-relay.sh:ro',
+      ]
+    networks: [private]
+    healthcheck:
+      {
+        test: [CMD-SHELL, 'pg_isready -U relay_owner -d relay'],
+        interval: 5s,
+        timeout: 3s,
+        retries: 20,
+      }
+    mem_limit: 2g
+    cpus: 2
+    shm_size: 256m
+    restart: unless-stopped
+    stop_grace_period: 60s
+  queue:
+    image: redis:8-alpine@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0
+    user: redis
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: [sh, /etc/relay/redis-start.sh]
+    secrets: [redis_password]
+    volumes: ['redis:/data', './redis-start.sh:/etc/relay/redis-start.sh:ro']
+    networks: [private]
+    healthcheck:
+      {
+        test: [CMD-SHELL, 'REDISCLI_AUTH=$$(cat /run/secrets/redis_password) redis-cli ping'],
+        interval: 5s,
+        timeout: 3s,
+        retries: 20,
+      }
+    mem_limit: 768m
+    cpus: 1
+    restart: unless-stopped
+  storage:
+    image: rustfs/rustfs@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
+    command: ['/data']
+    environment:
+      {
+        RUSTFS_ACCESS_KEY_FILE: /run/secrets/s3_access_key,
+        RUSTFS_SECRET_KEY_FILE: /run/secrets/s3_secret_key,
+      }
+    secrets: [s3_access_key, s3_secret_key]
+    volumes: ['objects:/data']
+    networks: [private]
+    mem_limit: 1g
+    cpus: 1
+    restart: unless-stopped
+  prometheus:
+    image: prom/prometheus@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
+    command: ['--config.file=/etc/prometheus/prometheus.yml', '--storage.tsdb.retention.time=7d']
+    secrets: [metrics_token]
+    volumes:
+      [
+        './observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro',
+        './observability/alerts.yml:/etc/prometheus/alerts.yml:ro',
+        './observability/alert-tests.yml:/etc/prometheus/alert-tests.yml:ro',
+        'metrics:/prometheus',
+      ]
+    networks: [private]
+    mem_limit: 512m
+    cpus: 0.5
+    restart: unless-stopped
+  alertmanager:
+    image: prom/alertmanager@sha256:e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a
+    volumes: ['./observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro']
+    networks: [private, egress]
+    mem_limit: 128m
+    cpus: 0.25
+    restart: unless-stopped
+  collector:
+    image: otel/opentelemetry-collector-contrib@sha256:fd328de2552466ad78385e1b1289c3f2402b1c45f265b252aab1955b42845ac1
+    command: ['--config=/etc/otelcol/config.yml']
+    volumes: ['./observability/collector.yml:/etc/otelcol/config.yml:ro']
+    networks: [private]
+    mem_limit: 256m
+    cpus: 0.5
+    restart: unless-stopped
+  backup:
+    profiles: [tools]
+    image: relay-backup:local
+    user: '${BACKUP_UID:-1000}:${BACKUP_GID:-1000}'
+    build: { context: .., dockerfile: deploy/Dockerfile.backup }
+    entrypoint: [node, bin/backup.mjs]
+    environment:
+      PGHOST: database
+      PGUSER: relay_owner
+      PGDATABASE: relay
+      PGPASSWORD_FILE: /run/secrets/database_password
+      BACKUP_KEY_FILE: /run/secrets/backup_key
+      VAULT_KEYRING_FILE: /run/secrets/vault_keyring
+      S3_ENDPOINT: http://storage:9000
+      S3_BUCKET: relay
+      S3_ACCESS_KEY_ID_FILE: /run/secrets/s3_access_key
+      S3_SECRET_ACCESS_KEY_FILE: /run/secrets/s3_secret_key
+      BACKUP_DIRECTORY: /backups
+    secrets: [database_password, backup_key, vault_keyring, s3_access_key, s3_secret_key]
+    volumes: ['${BACKUP_PATH:?Private backup directory required}:/backups']
+    networks: [private]
+    read_only: true
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=1g,mode=1777']
+    mem_limit: 1g
+    cpus: 1
+networks:
+  private: { internal: true }
+  egress: {}
+volumes:
+  postgres: {}
+  redis: {}
+  objects: {}
+  tls: {}
+  caddy-config: {}
+  metrics: {}
+secrets:
+  database_password:
+    { file: '${SECRETS_PATH:?Private secrets directory required}/database_password' }
+  app_database_password: { file: '${SECRETS_PATH}/app_database_password' }
+  app_database_url: { file: '${SECRETS_PATH}/app_database_url' }
+  redis_password: { file: '${SECRETS_PATH}/redis_password' }
+  redis_url: { file: '${SECRETS_PATH}/redis_url' }
+  encryption_key: { file: '${SECRETS_PATH}/encryption_key' }
+  metrics_token: { file: '${SECRETS_PATH}/metrics_token' }
+  s3_access_key: { file: '${SECRETS_PATH}/s3_access_key' }
+  s3_secret_key: { file: '${SECRETS_PATH}/s3_secret_key' }
+  backup_key: { file: '${SECRETS_PATH}/backup_key' }
+  vault_keyring: { file: '${SECRETS_PATH}/vault_keyring' }

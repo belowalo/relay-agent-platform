@@ -1,0 +1,72 @@
+# TYPE relay_operations_total counter
+# TYPE relay_operation_duration_seconds histogram
+relay_operations_total{kind="api",status="ok"} 17
+relay_operation_duration_seconds_bucket{kind="api",status="ok",le="0.01"} 13
+relay_operation_duration_seconds_bucket{kind="api",status="ok",le="0.05"} 17
+relay_operation_duration_seconds_bucket{kind="api",status="ok",le="0.1"} 17
+relay_operation_duration_seconds_bucket{kind="api",status="ok",le="0.3"} 17
+relay_operation_duration_seconds_bucket{kind="api",status="ok",le="1"} 17
+relay_operation_duration_seconds_bucket{kind="api",status="ok",le="3"} 17
+relay_operation_duration_seconds_bucket{kind="api",status="ok",le="10"} 17
+relay_operation_duration_seconds_bucket{kind="api",status="ok",le="30"} 17
+relay_operation_duration_seconds_bucket{kind="api",status="ok",le="120"} 17
+relay_operation_duration_seconds_bucket{kind="api",status="ok",le="+Inf"} 17
+relay_operation_duration_seconds_count{kind="api",status="ok"} 17
+relay_operation_duration_seconds_sum{kind="api",status="ok"} 0.09000000000000001
+relay_operations_total{kind="provider",status="error"} 2
+relay_operation_duration_seconds_bucket{kind="provider",status="error",le="0.01"} 2
+relay_operation_duration_seconds_bucket{kind="provider",status="error",le="0.05"} 2
+relay_operation_duration_seconds_bucket{kind="provider",status="error",le="0.1"} 2
+relay_operation_duration_seconds_bucket{kind="provider",status="error",le="0.3"} 2
+relay_operation_duration_seconds_bucket{kind="provider",status="error",le="1"} 2
+relay_operation_duration_seconds_bucket{kind="provider",status="error",le="3"} 2
+relay_operation_duration_seconds_bucket{kind="provider",status="error",le="10"} 2
+relay_operation_duration_seconds_bucket{kind="provider",status="error",le="30"} 2
+relay_operation_duration_seconds_bucket{kind="provider",status="error",le="120"} 2
+relay_operation_duration_seconds_bucket{kind="provider",status="error",le="+Inf"} 2
+relay_operation_duration_seconds_count{kind="provider",status="error"} 2
+relay_operation_duration_seconds_sum{kind="provider",status="error"} 0
+relay_operations_total{kind="api",status="error"} 6
+relay_operation_duration_seconds_bucket{kind="api",status="error",le="0.01"} 5
+relay_operation_duration_seconds_bucket{kind="api",status="error",le="0.05"} 5
+relay_operation_duration_seconds_bucket{kind="api",status="error",le="0.1"} 5
+relay_operation_duration_seconds_bucket{kind="api",status="error",le="0.3"} 6
+relay_operation_duration_seconds_bucket{kind="api",status="error",le="1"} 6
+relay_operation_duration_seconds_bucket{kind="api",status="error",le="3"} 6
+relay_operation_duration_seconds_bucket{kind="api",status="error",le="10"} 6
+relay_operation_duration_seconds_bucket{kind="api",status="error",le="30"} 6
+relay_operation_duration_seconds_bucket{kind="api",status="error",le="120"} 6
+relay_operation_duration_seconds_bucket{kind="api",status="error",le="+Inf"} 6
+relay_operation_duration_seconds_count{kind="api",status="error"} 6
+relay_operation_duration_seconds_sum{kind="api",status="error"} 0.15800000000000003
+relay_operations_total{kind="storage",status="error"} 1
+relay_operation_duration_seconds_bucket{kind="storage",status="error",le="0.01"} 0
+relay_operation_duration_seconds_bucket{kind="storage",status="error",le="0.05"} 0
+relay_operation_duration_seconds_bucket{kind="storage",status="error",le="0.1"} 0
+relay_operation_duration_seconds_bucket{kind="storage",status="error",le="0.3"} 1
+relay_operation_duration_seconds_bucket{kind="storage",status="error",le="1"} 1
+relay_operation_duration_seconds_bucket{kind="storage",status="error",le="3"} 1
+relay_operation_duration_seconds_bucket{kind="storage",status="error",le="10"} 1
+relay_operation_duration_seconds_bucket{kind="storage",status="error",le="30"} 1
+relay_operation_duration_seconds_bucket{kind="storage",status="error",le="120"} 1
+relay_operation_duration_seconds_bucket{kind="storage",status="error",le="+Inf"} 1
+relay_operation_duration_seconds_count{kind="storage",status="error"} 1
+relay_operation_duration_seconds_sum{kind="storage",status="error"} 0.133
+# TYPE relay_worker_heartbeat_age_seconds gauge
+relay_worker_heartbeat_age_seconds 0
+# TYPE relay_queue_age_seconds gauge
+relay_queue_age_seconds 2.219
+# TYPE relay_queue_waiting gauge
+relay_queue_waiting 1
+# TYPE relay_dependency_ready gauge
+relay_dependency_ready 1
+# TYPE relay_disk_free_bytes gauge
+relay_disk_free_bytes 268435456
+# TYPE relay_retries_provider counter
+relay_retries_provider 2
+# TYPE relay_retries_storage counter
+relay_retries_storage 1
+# TYPE relay_telemetry_dropped_total counter
+relay_telemetry_dropped_total 0
+# TYPE relay_process_uptime_seconds gauge
+relay_process_uptime_seconds 16.109016682

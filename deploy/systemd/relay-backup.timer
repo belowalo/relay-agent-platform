@@ -1,0 +1,8 @@
+[Unit]
+Description=Relay backup schedule
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=45min
+Persistent=true
+[Install]
+WantedBy=timers.target
