@@ -15,6 +15,7 @@ COPY --from=build --chown=1000:1000 /app/bin ./bin
 COPY --from=build --chown=1000:1000 /app/deploy/qualification ./deploy/qualification
 COPY --from=build --chown=1000:1000 /app/package.json ./package.json
 USER 1000:1000
+ENTRYPOINT []
 EXPOSE 4311
 HEALTHCHECK --interval=10s --timeout=4s CMD ["node", "bin/healthcheck.mjs"]
 CMD ["node", "bin/production-entrypoint.mjs"]
