@@ -1,0 +1,56 @@
+{
+  "profile": "embedded actual PostgreSQL/pgvector 0.8.1 WASM, restricted role, single connection; not networked/concurrent production qualification",
+  "embeddingMode": "fixture precomputed unit vectors; excludes model/extraction time",
+  "chunks": 50000,
+  "dimensions": 384,
+  "indexingMs": 115342.99440000001,
+  "chunksPerSecond": 433.48969965704305,
+  "databaseBytes": 261357568,
+  "rssBytes": 1164185600,
+  "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor           ",
+  "cpuCount": 8,
+  "node": "v22.16.0",
+  "modes": {
+    "keyword": {
+      "requests": 10,
+      "p50Ms": 24.884500000000116,
+      "p95Ms": 25.30229999999574,
+      "maximumMs": 25.30229999999574
+    },
+    "vector": {
+      "requests": 10,
+      "p50Ms": 41.535900000002584,
+      "p95Ms": 42.580100000006496,
+      "maximumMs": 42.580100000006496
+    },
+    "hybrid": {
+      "requests": 10,
+      "p50Ms": 63.3072000000102,
+      "p95Ms": 65.27550000000338,
+      "maximumMs": 65.27550000000338
+    }
+  },
+  "sampledVectorSearchRecallAt5": 1,
+  "sampleQueries": 10,
+  "vectorPlan": {
+    "nodes": [
+      "Limit",
+      "Incremental Sort",
+      "Result",
+      "Nested Loop",
+      "Nested Loop",
+      "Index Scan",
+      "Index Scan",
+      "Materialize",
+      "Seq Scan",
+      "Nested Loop",
+      "Function Scan",
+      "Materialize",
+      "ProjectSet",
+      "Result"
+    ],
+    "indexes": ["knowledge_vectors_ann", "knowledge_chunks_workspace_id_id_key"],
+    "hnswUsed": true
+  },
+  "statistics": "ANALYZE before retrieval"
+}

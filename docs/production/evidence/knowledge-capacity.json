@@ -1,0 +1,33 @@
+{
+  "profile": "single-process SQLite development adapter; exact vector scan, not PostgreSQL/HNSW or concurrent production qualification",
+  "embeddingMode": "fixture precomputed unit vectors; excludes model/extraction time",
+  "chunks": 50000,
+  "dimensions": 384,
+  "indexingMs": 19199.1741,
+  "chunksPerSecond": 2604.2786913422487,
+  "databaseBytes": 140522640,
+  "rssBytes": 685973504,
+  "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor           ",
+  "cpuCount": 8,
+  "node": "v22.16.0",
+  "modes": {
+    "keyword": {
+      "requests": 10,
+      "p50Ms": 71.25810000000274,
+      "p95Ms": 81.2686999999969,
+      "maximumMs": 81.2686999999969
+    },
+    "vector": {
+      "requests": 10,
+      "p50Ms": 745.459600000002,
+      "p95Ms": 1129.0755000000026,
+      "maximumMs": 1129.0755000000026
+    },
+    "hybrid": {
+      "requests": 10,
+      "p50Ms": 653.5407000000014,
+      "p95Ms": 755.8135000000038,
+      "maximumMs": 755.8135000000038
+    }
+  }
+}
