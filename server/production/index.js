@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import cookieParser from 'cookie-parser';
 import { createPostgresDatabase } from '../foundation/database.js';
 import { createJobQueue } from '../foundation/queue.js';
-import { createSecretVault } from '../foundation/secrets.js';
+import { productionVault } from './vault.js';
 import { PlatformError } from '../foundation/errors.js';
 import { resourceId } from '../foundation/contracts.js';
 import { createSecurityServices, createSecurityMiddleware } from '../security/index.js';
@@ -86,10 +86,7 @@ export async function createRuntimePorts({ config, env = process.env }) {
         if (!schema.ready) throw new Error('INTEGRATION_SCHEMA_REQUIRED');
       },
     );
-    const vault = createSecretVault(
-      { [config.encryptionKeyId]: config.encryptionKey },
-      config.encryptionKeyId,
-    );
+    const vault = productionVault(config, env);
     let security;
     const tableFor = {
       workflow: 'workflows',
@@ -206,7 +203,7 @@ export async function createRuntimePorts({ config, env = process.env }) {
       },
       ['Validate the offline embedding cache.'],
     );
-    const retrieve = createRetriever({
+    const rawRetrieve = createRetriever({
       repository: knowledgeRepository,
       security: knowledgeSecurity,
       embeddings,
@@ -218,6 +215,10 @@ export async function createRuntimePorts({ config, env = process.env }) {
         ? otlpExporter(env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT, serviceName)
         : undefined,
     });
+    const retrieve = (ctx, ...args) =>
+      telemetry.span('retrieval', { workspaceId: ctx.workspaceId, requestId: ctx.requestId }, () =>
+        rawRetrieve(ctx, ...args),
+      );
     const health = createHealth({
       integrated: true,
       probes: {
@@ -341,8 +342,32 @@ export async function createRuntimePorts({ config, env = process.env }) {
       validateWorkflow: assertNoInlineSecrets,
       usage: security.usage,
       model: { call: modelCall },
-      tools: toolPorts.tools,
+      tools: {
+        ...toolPorts.tools,
+        invoke: (ctx, q) =>
+          telemetry.span('tool', { workspaceId: ctx.workspaceId, requestId: ctx.requestId }, () =>
+            toolPorts.tools.invoke(ctx, q),
+          ),
+      },
       snapshotTool: toolPorts.snapshotTool,
+      captureTrace: () => telemetry.headers().traceparent,
+      async runJob(job, callback) {
+        const scope = {
+          workspaceId: job.workspaceId,
+          actor: { kind: 'service', id: 'trace-discovery' },
+          requestId: job.requestId,
+        };
+        const parent =
+          job.kind === 'workflow.run'
+            ? await database.transaction(scope, (s) =>
+                s.one('SELECT traceparent FROM relay.runs WHERE workspace_id=$1 AND id=$2', [
+                  job.workspaceId,
+                  job.resourceId,
+                ]),
+              )
+            : null;
+        return telemetry.job(job, parent?.traceparent, callback);
+      },
       knowledge: {
         retrieve: async (ctx, q) =>
           (
@@ -472,7 +497,7 @@ export async function createRuntimePorts({ config, env = process.env }) {
       },
       telemetry: {
         event: (code, m) => telemetry.log(code.replaceAll('.', '_'), m),
-        timing: () => {},
+        timing: (kind, ms) => telemetry.observe(kind, ms),
       },
       jobHandlers: {
         'source.ingest': (job) => pipeline.handleJob(job, { resolveContext: resolveIngestion }),

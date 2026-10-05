@@ -61,7 +61,7 @@ export function scoreProductionOutput(output, expected, rules, run) {
   });
   return { score: checks.filter((c) => c.passed).length / checks.length, checks };
 }
-const rule = z
+export const productionRuleSchema = z
   .object({
     type: z.enum(['success', 'exact', 'contains', 'json', 'latency', 'tokens']),
     path: z.string().max(200).optional(),
@@ -70,7 +70,22 @@ const rule = z
     maxMs: z.number().nonnegative().optional(),
     maxTokens: z.number().int().nonnegative().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((r, ctx) => {
+    if (
+      (r.type === 'latency' && r.maxMs === undefined) ||
+      (r.type === 'tokens' && r.maxTokens === undefined) ||
+      (r.type === 'json' && r.schema === undefined)
+    )
+      ctx.addIssue({ code: 'custom', message: 'Evaluator configuration is incomplete.' });
+    if (r.type === 'json' && r.schema) {
+      try {
+        ajv.compile(r.schema);
+      } catch {
+        ctx.addIssue({ code: 'custom', message: 'Invalid JSON schema.' });
+      }
+    }
+  });
 export function createProductionQuality({ database, security, repository }) {
   const tx = (ctx, fn) => database.transaction(ctx, fn);
   async function pump(scope) {
@@ -331,7 +346,7 @@ export function createProductionQuality({ database, security, repository }) {
             versionId: resourceId.optional(),
             mode: z.enum(['live', 'preview']).default('preview'),
             threshold: z.number().min(0).max(1).default(1),
-            rules: z.array(rule).max(30).default([]),
+            rules: z.array(productionRuleSchema).max(30).default([]),
             judgeConnectionId: resourceId.optional(),
             rubric: z.string().max(10000).optional(),
           })

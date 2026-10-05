@@ -17,8 +17,9 @@ const server = http.createServer(async (req, res) => {
       return res.end();
     }
   }
-  if (req.url === '/action' && req.method === 'POST') {
+  if (['/action', '/action-slow'].includes(req.url) && req.method === 'POST') {
     actions.push(JSON.parse(body));
+    if (req.url === '/action-slow') await new Promise((r) => setTimeout(r, 120000));
     res.setHeader('content-type', 'application/json');
     return res.end(JSON.stringify({ accepted: true }));
   }

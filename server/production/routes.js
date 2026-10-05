@@ -243,6 +243,16 @@ export function registerProductionRoutes(
       tools: toolCatalog,
       templates,
       providers: ['openai-compatible', 'anthropic', 'credential'],
+      profile: 'production',
+      capabilities: {
+        publications: {
+          hostedChat: false,
+          widget: false,
+          webhook: false,
+          mcp: false,
+          publicGuest: false,
+        },
+      },
     }),
   );
   router.post(
@@ -568,30 +578,45 @@ export function registerProductionRoutes(
       }),
     );
   }
+  async function collectionSources(req) {
+    const sources = await tx(req, (s) =>
+      s.all(
+        'SELECT s.id,s.name,s.version,s.indexed_version,s.created_at,s.metadata,s.access,(SELECT count(*) FROM relay.knowledge_chunks c WHERE c.workspace_id=s.workspace_id AND c.source_id=s.id AND c.version=s.indexed_version) AS chunks,j.id AS job_id,j.state AS status,j.progress,j.error FROM relay.knowledge_sources s LEFT JOIN LATERAL(SELECT * FROM relay.knowledge_jobs WHERE source_id=s.id AND workspace_id=s.workspace_id ORDER BY created_at DESC LIMIT 1) j ON true WHERE s.workspace_id=$1 AND s.collection_id=$2 AND NOT s.deleted',
+        [context(req).workspaceId, req.params.id],
+      ),
+    );
+    const allowed = [];
+    for (const source of sources) {
+      try {
+        await security.authorize(context(req), 'document.read', {
+          kind: 'document',
+          id: source.id,
+        });
+        allowed.push({
+          ...publicRow(source),
+          status: source.status === 'completed' ? 'ready' : source.status,
+          chunks: Number(source.chunks || 0),
+        });
+      } catch (e) {
+        if (e.code !== 'FORBIDDEN') throw e;
+      }
+    }
+    return allowed;
+  }
   router.get(
     '/collections/:id',
     permission('document.read', 'collection'),
     route(async (req, res) => {
       const row = await scoped(req, 'collections');
-      const sources = await tx(req, (s) =>
-        s.all(
-          'SELECT s.id,s.name,s.version,s.indexed_version,s.created_at,s.metadata,s.access,j.id AS job_id,j.state AS status,j.progress,j.error FROM relay.knowledge_sources s LEFT JOIN LATERAL(SELECT * FROM relay.knowledge_jobs WHERE source_id=s.id AND workspace_id=s.workspace_id ORDER BY created_at DESC LIMIT 1) j ON true WHERE s.workspace_id=$1 AND s.collection_id=$2 AND NOT s.deleted',
-          [context(req).workspaceId, req.params.id],
-        ),
-      );
-      const allowed = [];
-      for (const source of sources) {
-        try {
-          await security.authorize(context(req), 'document.read', {
-            kind: 'document',
-            id: source.id,
-          });
-          allowed.push(source);
-        } catch (e) {
-          if (e.code !== 'FORBIDDEN') throw e;
-        }
-      }
-      res.json({ ...publicRow(row), sources: allowed.map(publicRow) });
+      res.json({ ...publicRow(row), sources: await collectionSources(req) });
+    }),
+  );
+  router.get(
+    '/collections/:id/sources',
+    permission('document.read', 'collection'),
+    route(async (req, res) => {
+      await scoped(req, 'collections');
+      res.json(await collectionSources(req));
     }),
   );
   router.post(
@@ -640,12 +665,16 @@ export function registerProductionRoutes(
     }),
   );
   router.post(
-    '/collections/:id/search',
+    ['/collections/:id/search', '/collections/:id/retrieve'],
     permission('document.read', 'collection'),
     route(async (req, res) => {
       const { query, ...options } = req.body;
       const result = await retrieve(context(req), req.params.id, query, options);
-      res.json({ ...result, results: result.evidence.map((e) => e.citation) });
+      res.json({
+        ...result,
+        results: result.evidence.map((e) => e.citation),
+        sources: result.evidence.map((e) => ({ ...e.citation, content: e.citation.text })),
+      });
     }),
   );
   router.post(

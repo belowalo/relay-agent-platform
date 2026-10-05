@@ -553,6 +553,8 @@ export function RunHistory(p: PageProps & { runId?: string }) {
   );
 }
 export function Applications(p: PageProps) {
+  const { data: catalog } = useData<any>(`${p.base}/catalog`, p.notify);
+  const production = catalog?.profile === 'production';
   const { data, reload } = useData<any[]>(`${p.base}/applications`, p.notify);
   const { data: workflows } = useData<any[]>(`${p.base}/workflows`, p.notify);
   const [editing, setEditing] = useState<any>(null),
@@ -563,7 +565,11 @@ export function Applications(p: PageProps) {
       <PageHeader
         eyebrow="PUT YOUR TEAM TO WORK"
         title="Applications"
-        description="Publish a saved version as a local chat, widget, API, or webhook."
+        description={
+          production
+            ? 'Publish an immutable workflow through a private scoped API.'
+            : 'Publish a saved version as a local chat, widget, API, or webhook.'
+        }
       >
         {editable(p.role) && (
           <Button
@@ -617,10 +623,12 @@ export function Applications(p: PageProps) {
                 {a.settings.mode === 'preview' ? 'Development preview' : 'Live execution'}
               </p>
               <div className="app-links">
-                <a href={`/apps/${a.id}`} target="_blank" rel="noreferrer">
-                  Open hosted chat
-                  <ExternalLink size={15} />
-                </a>
+                {!production && (
+                  <a href={`/apps/${a.id}`} target="_blank" rel="noreferrer">
+                    Open hosted chat
+                    <ExternalLink size={15} />
+                  </a>
+                )}
                 <button
                   onClick={() => {
                     navigator.clipboard.writeText(`${location.origin}/api/apps/${a.id}/invoke`);
@@ -630,17 +638,19 @@ export function Applications(p: PageProps) {
                   Copy API endpoint
                   <Copy size={15} />
                 </button>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(
-                      `<script src="${location.origin}/widget.js" data-app="${a.id}"></script>`,
-                    );
-                    p.notify('Embed snippet copied. Public chat must be enabled for visitors.');
-                  }}
-                >
-                  Copy widget snippet
-                  <Copy size={15} />
-                </button>
+                {!production && (
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(
+                        `<script src="${location.origin}/widget.js" data-app="${a.id}"></script>`,
+                      );
+                      p.notify('Embed snippet copied. Public chat must be enabled for visitors.');
+                    }}
+                  >
+                    Copy widget snippet
+                    <Copy size={15} />
+                  </button>
+                )}
               </div>
               <footer>
                 <Button disabled={!editable(p.role)} onClick={() => setEditing(a)}>
@@ -702,16 +712,26 @@ export function Applications(p: PageProps) {
       <section className="panel api-guide">
         <h3>Call a published application</h3>
         <p>
-          POST JSON with an input field and Authorization: Bearer YOUR_APPLICATION_TOKEN. Webhooks
-          use the same token and a /webhook endpoint. Read the returned run endpoint for its result.
+          POST JSON with an input field and Authorization: Bearer YOUR_APPLICATION_TOKEN. Read the
+          returned run endpoint for its result.
         </p>
         <pre>{`POST /api/apps/{application-id}/invoke\nAuthorization: Bearer YOUR_APPLICATION_TOKEN\nContent-Type: application/json\n\n{"input":"Research our next opportunity"}`}</pre>
-        <h3>Use this workflow from another agent</h3>
-        <p>
-          Connect a Streamable HTTP MCP client to /api/apps/&#123;application-id&#125;/mcp with the
-          same bearer token. It exposes invoke_workflow and get_run. Public chat settings do not
-          grant MCP access.
-        </p>
+        {!production && (
+          <>
+            <h3>Use this workflow from another agent</h3>
+            <p>
+              Connect a Streamable HTTP MCP client to /api/apps/&#123;application-id&#125;/mcp with
+              the same bearer token. It exposes invoke_workflow and get_run. Public chat settings do
+              not grant MCP access.
+            </p>
+          </>
+        )}
+        {production && (
+          <p>
+            This deployment supports private API publications. Hosted chat, widgets, public guests,
+            webhooks and MCP publication are unavailable.
+          </p>
+        )}
         <p>
           The repository includes JavaScript and Python clients and a command-line runner. See
           docs/SDK.md for examples.
@@ -728,7 +748,17 @@ export function Applications(p: PageProps) {
               try {
                 const r = await api(
                   `${p.base}/applications${editing.id ? '/' + editing.id : ''}`,
-                  editing,
+                  {
+                    name: editing.name,
+                    workflowId: editing.workflowId || editing.workflow_id,
+                    publishLatest: editing.id ? editing.publishLatest : undefined,
+                    settings: {
+                      public: !!editing.settings.public,
+                      mode: editing.settings.mode,
+                      welcome: editing.settings.welcome,
+                      accent: editing.settings.accent,
+                    },
+                  },
                   editing.id ? 'PUT' : 'POST',
                 );
                 if (r.token) setToken(r);
@@ -802,22 +832,22 @@ export function Applications(p: PageProps) {
                 </Select>
               </Field>
             </div>
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                checked={!!editing.settings.public}
-                onChange={(e) =>
-                  setEditing({
-                    ...editing,
-                    settings: { ...editing.settings, public: e.target.checked },
-                  })
-                }
-              />
-              Allow public hosted chat and widget access
-            </label>
-            <small className="muted">
-              The API and webhook always require the application token.
-            </small>
+            {!production && (
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={!!editing.settings.public}
+                  onChange={(e) =>
+                    setEditing({
+                      ...editing,
+                      settings: { ...editing.settings, public: e.target.checked },
+                    })
+                  }
+                />
+                Allow public hosted chat and widget access
+              </label>
+            )}
+            <small className="muted">The API requires the application token.</small>
             {editing.id && (
               <label className="checkbox">
                 <input
@@ -855,17 +885,26 @@ export function Applications(p: PageProps) {
             Copy token
           </Button>
           <pre className="result-block">{`POST ${location.origin}/api/apps/${token.id}/invoke\nAuthorization: Bearer YOUR_APPLICATION_TOKEN\n\n{"input":"Your task"}`}</pre>
-          <Field label="MCP endpoint">
-            <input
-              readOnly
-              value={`${location.origin}/api/apps/${token.id}/mcp`}
-              onFocus={(e) => e.target.select()}
-            />
-          </Field>
-          <a className="btn primary" href={`/apps/${token.id}`} target="_blank" rel="noreferrer">
-            Open chat
-            <ExternalLink size={15} />
-          </a>
+          {!production && (
+            <>
+              <Field label="MCP endpoint">
+                <input
+                  readOnly
+                  value={`${location.origin}/api/apps/${token.id}/mcp`}
+                  onFocus={(e) => e.target.select()}
+                />
+              </Field>
+              <a
+                className="btn primary"
+                href={`/apps/${token.id}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open chat
+                <ExternalLink size={15} />
+              </a>
+            </>
+          )}
         </Modal>
       )}
       {deleting && (

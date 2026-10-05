@@ -4,6 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { measureProductionWorkload } from './production-load.mjs';
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'relay-integrated-'));
 const project = 'relay-integrated-' + crypto.randomBytes(4).toString('hex');
 const results = path.resolve(process.env.PRODUCTION_RESULTS || 'production-results');
@@ -59,11 +60,13 @@ const base = [
 ];
 const compose = (...args) => run('docker', [...base, ...args]);
 let api,
+  apis = [],
+  apiIndex = 0,
   cookie = '',
   workspace;
 const origin = 'https://relay.example.com';
 async function request(route, body, method, cookieValue = cookie) {
-  const r = await fetch(api + route, {
+  const r = await fetch((apis.length ? apis[apiIndex++ % apis.length] : api) + route, {
     method: method || (body === undefined ? 'GET' : 'POST'),
     headers: {
       Origin: origin,
@@ -130,6 +133,8 @@ const expect = (v, status) => {
 };
 let runId, sourceId, collectionId, connectionId, workflowId;
 try {
+  report.releaseCommit = (await run('git', ['rev-parse', 'HEAD'])).stdout.trim();
+  env.RELEASE_COMMIT = report.releaseCommit;
   await run('docker', ['info']);
   await run(process.execPath, ['bin/operations-init.mjs', root]);
   for (const f of await fs.readdir(path.join(root, 'secrets')))
@@ -141,11 +146,13 @@ try {
     `services:
   api:
     environment:
+      RUNTIME_LEASE_MS: '2000'
       ALLOW_REGISTRATION: 'true'
       OUTBOUND_POLICY_JSON: '{"origins":["http://qualification-model:4320"],"privateCidrs":["172.16.0.0/12","192.168.0.0/16","10.0.0.0/8"]}'
     ports: ['127.0.0.1::4311']
   worker:
     environment:
+      RUNTIME_LEASE_MS: '2000'
       OUTBOUND_POLICY_JSON: '{"origins":["http://qualification-model:4320"],"privateCidrs":["172.16.0.0/12","192.168.0.0/16","10.0.0.0/8"]}'
   qualification-model:
     image: relay-operations:local
@@ -201,6 +208,7 @@ try {
       'proxy',
     );
     api = 'http://' + (await compose('port', '--index', '1', 'api', '4311')).stdout.trim();
+    apis = [api, 'http://' + (await compose('port', '--index', '2', 'api', '4311')).stdout.trim()];
     await ready();
     const ids = (await compose('ps', '-q', 'api', 'worker', 'parser')).stdout.trim().split(/\s+/);
     const containers = JSON.parse((await run('docker', ['inspect', ...ids])).stdout);
@@ -225,6 +233,15 @@ try {
         .stdout,
     )[0];
     assert.equal(net.Internal, true);
+    await compose(
+      'exec',
+      '-T',
+      'parser',
+      'node',
+      '--input-type=module',
+      '-e',
+      "import fs from 'node:fs';import assert from 'node:assert/strict';assert.deepEqual(fs.readdirSync('/run/secrets'),['parser_token']);for(const u of ['http://database:5432','https://example.com']){let denied=false;try{await fetch(u,{signal:AbortSignal.timeout(2000)})}catch{denied=true}assert.ok(denied)}",
+    );
     report.containerLimits = containers.map((c) => ({
       role: c.Config.Env.find((v) => v.startsWith('ENGINE_ROLE=')) || 'parser',
       memoryBytes: c.HostConfig.Memory,
@@ -341,6 +358,161 @@ try {
     );
     assert.ok(found.evidence.length);
     assert.equal(found.evidence[0].citation.sourceId, sourceId);
+  });
+  await drill('isolated-binary-document-ingestion', async () => {
+    for (const ext of ['pdf', 'docx']) {
+      const form = new FormData();
+      form.set(
+        'file',
+        new Blob([await fs.readFile(`tests/fixtures/knowledge.${ext}`)]),
+        `knowledge.${ext}`,
+      );
+      const u = await fetch(`${api}/api/w/${workspace}/collections/${collectionId}/upload`, {
+        method: 'POST',
+        headers: { Origin: origin, Cookie: cookie },
+        body: form,
+      });
+      const d = await u.json();
+      assert.equal(u.status, 201, JSON.stringify(d));
+      await until(async () => {
+        const j = (await request(`/api/w/${workspace}/knowledge/jobs/${d.jobId}`)).data;
+        if (j.state === 'failed') throw new Error(JSON.stringify(j.error));
+        return j.state === 'completed';
+      }, 120000);
+    }
+    const found = expect(
+      await request(`/api/w/${workspace}/collections/${collectionId}/search`, {
+        query: 'Orion',
+        mode: 'hybrid',
+      }),
+      200,
+    );
+    assert.ok(found.evidence.some((v) => v.citation.text.includes('Orion')));
+  });
+  await drill('uncertain-write-kill-and-recovery-no-replay', async () => {
+    const base = `/api/w/${workspace}`;
+    const tool = expect(
+      await request(base + '/tools', {
+        name: 'Crash after external acceptance',
+        kind: 'http',
+        config: { url: 'http://qualification-model:4320/action-slow', method: 'POST' },
+      }),
+      201,
+    );
+    const w = expect(
+      await request(base + '/workflows', {
+        name: 'Write recovery',
+        graph: graph('tool', { toolId: tool.id }),
+      }),
+      201,
+    );
+    const id = expect(
+      await request(base + `/workflows/${w.id}/runs`, {
+        input: { qualification: true },
+        mode: 'live',
+      }),
+      202,
+    ).id;
+    const approval = await until(async () => {
+      const d = (await request(base + `/runs/${id}`)).data;
+      return d.approvals?.[0];
+    });
+    expect(
+      await request(base + `/approvals/${approval.id}/decision`, {
+        approved: true,
+        argumentHash: approval.argumentHash || approval.argument_hash,
+      }),
+      200,
+    );
+    const count = () =>
+      compose(
+        'exec',
+        '-T',
+        'qualification-model',
+        'node',
+        '--input-type=module',
+        '-e',
+        "console.log(JSON.stringify(await(await fetch('http://127.0.0.1:4320/actions')).json()))",
+      );
+    await until(async () => JSON.parse((await count()).stdout).count === 1);
+    await compose('kill', '-s', 'SIGKILL', 'worker');
+    await compose('up', '-d', '--wait', '--scale', 'worker=2', 'worker');
+    await until(async () => {
+      const a = (await request(base + `/runs/${id}/actions`)).data;
+      return a.some((v) => v.status === 'uncertain');
+    });
+    await new Promise((r) => setTimeout(r, 3000));
+    assert.equal(JSON.parse((await count()).stdout).count, 1);
+    expect(await request(base + `/runs/${id}/cancel`, {}), 200);
+  });
+  await drill('measured-actual-api-and-retrieval-workload', async () => {
+    const cookies = [];
+    for (let i = 0; i < 8; i++) {
+      const email = `load-${i}@relay.test`;
+      const u = expect(
+        await request('/api/auth/register', {
+          name: `Load ${i}`,
+          email,
+          password: 'Disposable-load-2026',
+        }),
+        201,
+      );
+      const login = await request('/api/auth/login', { email, password: 'Disposable-load-2026' });
+      expect(login, 200);
+      const c = login.r.headers.get('set-cookie').split(';')[0];
+      secrets.push(c);
+      const invitation = expect(
+        await request(`/api/w/${workspace}/invitations`, { email, role: 'viewer' }),
+        201,
+      );
+      secrets.push(invitation.token);
+      expect(
+        await request('/api/invitations/accept', { token: invitation.token }, undefined, c),
+        200,
+      );
+      cookies.push(c);
+    }
+    const token = (await fs.readFile(path.join(root, 'secrets', 'metrics_token'), 'utf8')).trim();
+    const memBytes = (v) => {
+      const m = v.match(/([\d.]+)([KMGT]?i?B)/);
+      if (!m) throw new Error('Unknown Docker memory unit');
+      return (
+        Number(m[1]) *
+        ({ B: 1, kB: 1000, KiB: 1024, MB: 1e6, MiB: 1048576, GB: 1e9, GiB: 1073741824 }[m[2]] ||
+          NaN)
+      );
+    };
+    async function sampleResources() {
+      const ids = (await compose('ps', '-q', 'api', 'worker')).stdout.trim().split(/\s+/);
+      const rows = (
+        await run('docker', ['stats', '--no-stream', '--format', '{{json .}}', ...ids])
+      ).stdout
+        .trim()
+        .split('\n')
+        .map((v) => JSON.parse(v));
+      const metrics = await (
+        await fetch(api + '/metrics', { headers: { Authorization: 'Bearer ' + token } })
+      ).text();
+      const m = metrics.match(/^relay_queue_waiting ([\d.]+)/m);
+      return {
+        memoryBytes: Object.fromEntries(rows.map((v) => [v.Name, memBytes(v.MemUsage)])),
+        queueWaiting: m ? Number(m[1]) : null,
+      };
+    }
+    report.workload = await measureProductionWorkload({
+      request,
+      base: `/api/w/${workspace}`,
+      collectionId,
+      cookies,
+      durationSeconds: env.PRODUCTION_SOAK === 'true' ? 3600 : 120,
+      sampleResources,
+      progress: (v) => console.log(JSON.stringify({ workloadProgress: v })),
+    });
+    await fs.writeFile(
+      path.join(results, 'workload.json'),
+      JSON.stringify(report.workload, null, 2),
+    );
+    assert.ok(report.workload.passed, JSON.stringify({ ...report.workload, resources: undefined }));
   });
   for (const dependency of ['database', 'queue', 'storage'])
     await drill(dependency + '-readiness-and-recovery', async () => {

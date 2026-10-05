@@ -2,6 +2,7 @@ name: Verify Relay
 on:
   push:
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -15,6 +16,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with: { ref: '${{ github.event.pull_request.head.sha || github.sha }}' }
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
@@ -62,6 +64,7 @@ jobs:
       INTEGRATION_S3_SECRET_KEY: integration-fixture-secret-only
     steps:
       - uses: actions/checkout@v7
+        with: { ref: '${{ github.event.pull_request.head.sha || github.sha }}' }
       - uses: actions/setup-node@v7
         with:
           node-version: '24'

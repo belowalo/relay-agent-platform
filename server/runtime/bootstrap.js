@@ -55,6 +55,7 @@ export async function startProduction({
     const repository = createRuntimeRepository(database, {
       leaseMs: Number(env.RUNTIME_LEASE_MS || 30000),
       snapshotTool: ports.snapshotTool,
+      captureTrace: ports.captureTrace,
     });
     const scheduler = createRuntimeScheduler({ repository, authorize: ports.authorize });
     const ready = async () => {
@@ -92,11 +93,14 @@ export async function startProduction({
         onError: (code) => ports.telemetry?.event(code, {}),
       });
       transport = queue.createWorker(async (reference) => {
-        if (reference.kind === 'workflow.run') return worker.execute(reference);
-        const handler = ports.jobHandlers?.[reference.kind];
-        if (!handler) fail('UNSUPPORTED_JOB_KIND');
-        // Domain handler must reload its authoritative record, reauthorize, and fence its own claims.
-        await handler(reference);
+        const execute = async () => {
+          if (reference.kind === 'workflow.run') return worker.execute(reference);
+          const handler = ports.jobHandlers?.[reference.kind];
+          if (!handler) fail('UNSUPPORTED_JOB_KIND');
+          // Domain handler must reload its authoritative record, reauthorize, and fence its own claims.
+          await handler(reference);
+        };
+        return ports.runJob ? ports.runJob(reference, execute) : execute();
       });
       let ticking = false;
       timer = setInterval(async () => {

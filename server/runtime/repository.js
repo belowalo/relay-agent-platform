@@ -13,7 +13,10 @@ import {
   boundOutput,
 } from './core.js';
 
-export function createRuntimeRepository(database, { leaseMs = 30000, snapshotTool } = {}) {
+export function createRuntimeRepository(
+  database,
+  { leaseMs = 30000, snapshotTool, captureTrace } = {},
+) {
   if (!Number.isInteger(leaseMs) || leaseMs < 200 || leaseMs > 120000) fail('INVALID_LEASE');
   const tx = (context, fn) => database.transaction(tenantContextSchema.parse(context), fn);
   const scoped = (s, table, id, lock = '') =>
@@ -110,7 +113,7 @@ export function createRuntimeRepository(database, { leaseMs = 30000, snapshotToo
     if (Number(count.n) >= Number(cap.max_queued)) fail('BACKPRESSURE');
     const id = uuid();
     await s.query(
-      "INSERT INTO relay.runs(id,workspace_id,workflow_id,version_id,graph,input,status,mode,parent_id,child_key,created_at,actor,request_id,limits,application_id) VALUES($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9,$10,$11,$12,$13,$14)",
+      "INSERT INTO relay.runs(id,workspace_id,workflow_id,version_id,graph,input,status,mode,parent_id,child_key,created_at,actor,request_id,limits,application_id,traceparent) VALUES($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9,$10,$11,$12,$13,$14,$15)",
       [
         id,
         s.context.workspaceId,
@@ -126,6 +129,7 @@ export function createRuntimeRepository(database, { leaseMs = 30000, snapshotToo
         s.context.requestId,
         json({ ...limits, depth }),
         applicationId,
+        captureTrace?.() || null,
       ],
     );
     for (const n of graph.nodes)

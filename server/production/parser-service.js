@@ -41,6 +41,9 @@ app.post('/parse', async (req, res) => {
   }
   const bytes = Buffer.from(b.bytes, 'base64');
   if (bytes.length > 15 * 1024 * 1024) return res.sendStatus(413);
+  // Body parsing is asynchronous: concurrent requests can pass the middleware
+  // before the first body finishes. Claim capacity again immediately before work.
+  if (active) return res.status(429).json({ error: 'Parser is busy; retry ingestion.' });
   active = true;
   try {
     res.json(

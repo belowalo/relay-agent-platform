@@ -151,6 +151,10 @@ export function createTelemetry({
   return {
     log,
     span,
+    observe: (kind, durationMs) => {
+      if (kinds.has(kind) && Number.isFinite(durationMs) && durationMs >= 0)
+        record(kind, 'ok', durationMs / 1000);
+    },
     headers: () => {
       const current = context.getStore();
       return current

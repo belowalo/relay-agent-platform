@@ -729,36 +729,45 @@ export function pump() {
   }
   heartbeat(active.size);
   for (const run of claimRuns(recoverRun)) {
-    try {
-      const graph = decode(run.graph);
-      if (run.status !== 'waiting') {
-        const delta = run.active_since
-          ? Math.max(0, Date.now() - new Date(run.active_since).getTime())
-          : 0;
-        run.active_ms = (run.active_ms || 0) + delta;
-        if (!run.active_since || delta >= 1000)
-          exec(
-            'UPDATE runs SET active_ms=?,active_since=? WHERE id=?',
-            run.active_ms,
-            now(),
-            run.id,
-          );
+    // Claiming and pumping are separate transactions. A different process may
+    // cancel the run or take its expired lease between them. Hold the SQLite
+    // write lock while checking ownership and applying synchronous transitions.
+    transaction(() => {
+      if (!owns(run)) return;
+      try {
+        const graph = decode(run.graph);
+        if (run.status !== 'waiting') {
+          const delta = run.active_since
+            ? Math.max(0, Date.now() - new Date(run.active_since).getTime())
+            : 0;
+          run.active_ms = (run.active_ms || 0) + delta;
+          if (!run.active_since || delta >= 1000)
+            exec(
+              'UPDATE runs SET active_ms=?,active_since=? WHERE id=?',
+              run.active_ms,
+              now(),
+              run.id,
+            );
+        }
+        if (
+          run.status !== 'waiting' &&
+          run.active_ms > Number(graph.settings?.timeoutMs || 600000)
+        ) {
+          cancelRun(run.id, 'Workflow time limit exceeded');
+          return;
+        }
+        pumpRun(run);
+      } catch (e) {
+        exec(
+          "UPDATE runs SET status='failed',error=?,finished_at=? WHERE id=?",
+          safeError(e),
+          now(),
+          run.id,
+        );
+        emit(run.id, 'run.failed', null, { error: safeError(e) });
+        controllers.get(run.id)?.abort();
       }
-      if (run.status !== 'waiting' && run.active_ms > Number(graph.settings?.timeoutMs || 600000)) {
-        cancelRun(run.id, 'Workflow time limit exceeded');
-        continue;
-      }
-      pumpRun(run);
-    } catch (e) {
-      exec(
-        "UPDATE runs SET status='failed',error=?,finished_at=? WHERE id=?",
-        safeError(e),
-        now(),
-        run.id,
-      );
-      emit(run.id, 'run.failed', null, { error: safeError(e) });
-      controllers.get(run.id)?.abort();
-    }
+    });
   }
 }
 export function cancelRun(runId, reason = 'Cancelled by user') {

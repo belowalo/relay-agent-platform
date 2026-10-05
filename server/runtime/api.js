@@ -159,6 +159,7 @@ export function createRuntimeApi({
       };
       const tick = async () => {
         if (stopped || ticking) return;
+        if (draining()) return end();
         ticking = true;
         try {
           const ctx = await authenticate(req);
@@ -225,9 +226,9 @@ export function createRuntimeApi({
         typeof actual.model !== 'string'
       )
         fail('VALIDATION_ERROR');
-      await usage.settle(req.context, reservationId, actual);
+      await usage.settle({ ...req.context, actor: decode(run.actor) }, reservationId, actual);
     } else if (resolution === 'release' && knownNotExecuted === true)
-      await usage.release(req.context, reservationId);
+      await usage.release({ ...req.context, actor: decode(run.actor) }, reservationId);
     else fail('VALIDATION_ERROR');
     await repository.clearUsageCheckpoint(
       req.context,
