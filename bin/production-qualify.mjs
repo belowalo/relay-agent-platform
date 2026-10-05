@@ -104,6 +104,15 @@ async function ready() {
     }
   });
 }
+async function refreshApis() {
+  apis = await Promise.all(
+    [1, 2].map(
+      async (index) =>
+        'http://' + (await compose('port', '--index', String(index), 'api', '4311')).stdout.trim(),
+    ),
+  );
+  api = apis[0];
+}
 async function drill(name, callback) {
   console.log(JSON.stringify({ name, status: 'started' }));
   const start = Date.now();
@@ -231,7 +240,7 @@ try {
       'parser',
       'proxy',
     );
-    api = 'http://' + (await compose('port', '--index', '1', 'api', '4311')).stdout.trim();
+    await refreshApis();
     apis = [api, 'http://' + (await compose('port', '--index', '2', 'api', '4311')).stdout.trim()];
     await ready();
     const ids = (await compose('ps', '-q', 'api', 'worker', 'parser')).stdout.trim().split(/\s+/);
@@ -637,7 +646,7 @@ try {
       'api',
       'worker',
     );
-    api = 'http://' + (await compose('port', '--index', '1', 'api', '4311')).stdout.trim();
+    await refreshApis();
     await ready();
     expect(await request('/api/me'), 200); // Restored sessions and memberships, not a newly seeded account.
     const run = expect(await request(`/api/w/${workspace}/runs/${runId}`), 200);
@@ -654,6 +663,80 @@ try {
     report.recoveryTimeMs = Date.now() - start;
     report.recoveryScope =
       'One-host quiesced database, identity, credential, vectors and S3 backup; no off-host copy or two-host failover claim';
+  });
+  await drill('prior-code-rollback-on-migrated-database', async () => {
+    const prior = '555a53ccd9d03a28cf7ecb91f1f209b21dbec154';
+    await run('git', ['fetch', '--depth=1', 'origin', prior]);
+    const directory = path.join(root, 'prior-code');
+    await fs.mkdir(directory);
+    const archive = path.join(root, 'prior-code.tar');
+    await run('git', ['archive', '--format=tar', '--output', archive, prior]);
+    await run('tar', ['-xf', archive, '-C', directory]);
+    // Rebuild prior application code on the current hardened runtime base, since
+    // the original prior database image has known vulnerabilities. Record both.
+    await fs.copyFile('deploy/Dockerfile', path.join(directory, 'deploy/Dockerfile'));
+    const image = project + '-prior';
+    await run('docker', [
+      'build',
+      '-f',
+      path.join(directory, 'deploy/Dockerfile'),
+      '-t',
+      image,
+      '--label',
+      `org.opencontainers.image.revision=${prior}`,
+      directory,
+    ]);
+    const candidate = (
+      await run('docker', ['image', 'inspect', 'relay-operations:local', '--format', '{{.Id}}'])
+    ).stdout.trim();
+    const previous = (
+      await run('docker', ['image', 'inspect', image, '--format', '{{.Id}}'])
+    ).stdout.trim();
+    assert.notEqual(candidate, previous);
+    async function switchTo(name) {
+      env.RELAY_IMAGE = name;
+      await compose(
+        'up',
+        '-d',
+        '--wait',
+        '--force-recreate',
+        '--scale',
+        'api=2',
+        '--scale',
+        'worker=2',
+        'api',
+        'worker',
+      );
+      await refreshApis();
+      await ready();
+    }
+    try {
+      await switchTo(image);
+      expect(await request('/api/me'), 200);
+      expect(await request(`/api/w/${workspace}/connections/${connectionId}/test`, {}), 200);
+      const id = expect(
+        await request(`/api/w/${workspace}/workflows/${workflowId}/runs`, {
+          input: 'Rollback compatibility',
+          mode: 'live',
+        }),
+        202,
+      ).id;
+      const done = await until(async () => {
+        const r = (await request(`/api/w/${workspace}/runs/${id}`)).data;
+        return ['completed', 'failed'].includes(r.status) && r;
+      });
+      assert.equal(done.status, 'completed', done.error);
+    } finally {
+      await switchTo('relay-operations:local');
+    }
+    report.rollback = {
+      priorCodeCommit: prior,
+      priorImage: previous,
+      candidateImage: candidate,
+      currentSchema: true,
+      scope:
+        'Prior application code rebuilt on current hardened base, one-host restored test database. Reversing migrations and physical cross-libc database upgrades is unsupported.',
+    };
   });
   report.status = 'passed';
 } catch (error) {
