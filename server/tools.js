@@ -154,6 +154,11 @@ export function isSideEffect(tool) {
       !['GET', 'HEAD'].includes((c.method || 'GET').toUpperCase()))
   );
 }
+export class ToolApprovalRequired extends Error {
+  constructor() {
+    super('Human approval is required before executing this tool');
+  }
+}
 export async function executeTool(ctx, tool, input, callId = 'main') {
   ctx.assertLease?.();
   validateSchema(tool.config.inputSchema, input);
@@ -162,6 +167,31 @@ export async function executeTool(ctx, tool, input, callId = 'main') {
   const actionKey = hash(`${ctx.runId}:${ctx.stepId}:${tool.id}:${callId}`);
   const previous = one('SELECT * FROM actions WHERE id=?', actionKey);
   if (previous?.status === 'completed') return decode(previous.result);
+  if (tool.config.requireApproval) {
+    if (!one('SELECT id FROM steps WHERE id=?', ctx.stepId))
+      throw new Error('Test approval-protected tools through a workflow component');
+    const approval = one('SELECT * FROM tool_approvals WHERE id=?', actionKey);
+    const inputHash = hash(encode(input));
+    if (approval && approval.input_hash !== inputHash)
+      throw new Error('Approved tool input changed; start a new run to review it');
+    if (approval?.status === 'rejected') throw new Error('Tool approval was rejected');
+    if (approval?.status !== 'approved') {
+      if (!approval)
+        exec(
+          'INSERT INTO tool_approvals VALUES(?,?,?,?,?,?,?,?)',
+          actionKey,
+          ctx.stepId,
+          tool.id,
+          tool.name,
+          encode(input),
+          inputHash,
+          'pending',
+          now(),
+        );
+      ctx.emit?.('approval.tool', { tool: tool.name, input, actionKey });
+      throw new ToolApprovalRequired();
+    }
+  }
   if (previous && isSideEffect(tool))
     throw new Error(
       'External action outcome is uncertain. Reconcile the action before starting a new run; automatic replay is disabled.',

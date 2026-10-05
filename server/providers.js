@@ -1,10 +1,16 @@
-import { one, decode, decrypt } from './db.js';
+import { one, exec, decode, encode, encrypt, decrypt, hash } from './db.js';
 import { safeFetch, responseText } from './network.js';
 export const providerRegistry = {};
 export function registerProvider(name, handler) {
   providerRegistry[name] = handler;
 }
 async function providerError(response) {
+  const error = await describeProviderError(response);
+  error.providerStatus = response.status;
+  error.retryable = [408, 429, 500, 502, 503, 504].includes(response.status);
+  return error;
+}
+async function describeProviderError(response) {
   let code, type;
   try {
     const body = JSON.parse(await responseText(response, 100_000));
@@ -95,6 +101,7 @@ registerProvider(
         },
         body: JSON.stringify(body),
         signal,
+        noRedirect: true,
       },
       !!decode(connection.config).allowPrivate,
     );
@@ -111,6 +118,7 @@ registerProvider(
       const delta = frame.choices?.[0]?.delta;
       if (delta?.content) {
         text += delta.content;
+        if (text.length > 2000000) throw new Error('Model output exceeded the response size limit');
         onToken(delta.content);
       }
       for (const call of delta?.tool_calls || []) {
@@ -186,6 +194,7 @@ registerProvider('anthropic', async ({ connection, messages, config, tools, sign
       },
       body: JSON.stringify(body),
       signal,
+      noRedirect: true,
     },
     !!decode(connection.config).allowPrivate,
   );
@@ -204,6 +213,7 @@ registerProvider('anthropic', async ({ connection, messages, config, tools, sign
       };
     if (frame.delta?.text) {
       text += frame.delta.text;
+      if (text.length > 2000000) throw new Error('Model output exceeded the response size limit');
       onToken(frame.delta.text);
     }
     if (frame.delta?.partial_json && calls[frame.index])
@@ -239,21 +249,98 @@ export async function modelCall(ctx, config, messages, tools = []) {
     }
     return { text, usage: { inputTokens: 0, outputTokens: 0 }, toolCalls: [] };
   }
-  const connection = one(
-    'SELECT * FROM connections WHERE id=? AND workspace_id=?',
-    config.connectionId,
-    ctx.wid,
-  );
-  if (!connection)
+  const ids = [...new Set([config.connectionId, ...(config.fallbackConnectionIds || [])])];
+  if (!config.connectionId)
     throw new Error('Choose a model connection from this workspace, or use development preview');
-  const provider = providerRegistry[connection.provider];
-  if (!provider) throw new Error('Unsupported model provider');
-  return provider({
-    connection,
-    config,
-    messages,
-    tools,
-    signal: ctx.signal,
-    onToken: ctx.onToken,
+  if (ids.length > 5) throw new Error('Use at most four fallback connections');
+  const connections = ids.map((cid) => {
+    const connection = one('SELECT * FROM connections WHERE id=? AND workspace_id=?', cid, ctx.wid);
+    if (!connection || !providerRegistry[connection.provider])
+      throw new Error('Choose supported model connections from this workspace');
+    return connection;
   });
+  const ttl = Math.max(0, Math.min(86400, Number(config.cacheTtlSeconds) || 0));
+  const cacheable =
+    ttl > 0 && !tools.length && !messages.some((m) => m.role === 'tool' || m.tool_calls);
+  const key = hash(
+    encode({
+      connections: connections.map((c) => [c.id, c.provider, c.endpoint, c.model, hash(c.secret)]),
+      messages,
+      model: config.model,
+      temperature: config.temperature ?? 0.4,
+      maxTokens: config.maxTokens || 2048,
+      outputSchema: config.outputSchema,
+    }),
+  );
+  if (cacheable) {
+    const cached = one(
+      'SELECT response FROM model_cache WHERE workspace_id=? AND cache_key=? AND expires_at>?',
+      ctx.wid,
+      key,
+      new Date().toISOString(),
+    );
+    if (cached) {
+      const result = decode(decrypt(cached.response));
+      ctx.onToken?.(result.text);
+      ctx.emit?.('model.cache', { hit: true, connectionId: result.connectionId });
+      return {
+        ...result,
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          cachedInputTokens: result.usage.inputTokens || 0,
+          cachedOutputTokens: result.usage.outputTokens || 0,
+        },
+        cached: true,
+      };
+    }
+  }
+  for (let i = 0; i < connections.length; i++) {
+    const connection = connections[i];
+    let emitted = false;
+    try {
+      ctx.signal?.throwIfAborted();
+      const result = await providerRegistry[connection.provider]({
+        connection,
+        // A fallback uses its own default model identifier.
+        config: i ? { ...config, model: undefined } : config,
+        messages,
+        tools,
+        signal: ctx.signal,
+        onToken: (token) => {
+          emitted = true;
+          ctx.onToken?.(token);
+        },
+      });
+      ctx.signal?.throwIfAborted();
+      ctx.assertLease?.();
+      result.connectionId = connection.id;
+      if (cacheable && !result.toolCalls?.length) {
+        exec('DELETE FROM model_cache WHERE expires_at<=?', new Date().toISOString());
+        exec(
+          'INSERT OR REPLACE INTO model_cache VALUES(?,?,?,?)',
+          ctx.wid,
+          key,
+          encrypt(encode(result)),
+          new Date(Date.now() + ttl * 1000).toISOString(),
+        );
+        // Bound retention per workspace, even when many different prompts are used.
+        exec(
+          'DELETE FROM model_cache WHERE workspace_id=? AND cache_key NOT IN (SELECT cache_key FROM model_cache WHERE workspace_id=? ORDER BY expires_at DESC LIMIT 1000)',
+          ctx.wid,
+          ctx.wid,
+        );
+      }
+      return result;
+    } catch (error) {
+      const retryable =
+        error.retryable || (error instanceof TypeError && error.message === 'fetch failed');
+      if (emitted || ctx.signal?.aborted || !retryable || i === connections.length - 1) throw error;
+      ctx.emit?.('model.fallback', {
+        from: connection.id,
+        to: connections[i + 1].id,
+        status: error.providerStatus,
+      });
+    }
+  }
 }

@@ -57,6 +57,7 @@ import { maintenance } from './maintenance.js';
 import { safeFetch, responseText } from './network.js';
 import { registerSecurity, finishLogin } from './security.js';
 import { registerPlatform } from './platform.js';
+import { registerApplicationMcp } from './mcp-server.js';
 const app = express();
 app.disable('x-powered-by');
 app.use(
@@ -536,6 +537,49 @@ api.post(
     res.status(201).json({ id: runId });
   }),
 );
+api.post(
+  '/workflows/:fid/nodes/:nid/test',
+  requireRole('editor'),
+  route((req, res) => {
+    const w = scoped('workflows', req.params.fid, req.workspace);
+    const saved = decode(w.graph);
+    const node = saved.nodes.find((n) => n.id === req.params.nid);
+    if (!node || ['input', 'output'].includes(node.data.kind))
+      throw new Error('Choose an executable workflow component');
+    const before = id(),
+      after = id();
+    const nodes = [
+      { id: before, data: { kind: 'input', label: 'Test payload', config: {} } },
+      node,
+      { id: after, data: { kind: 'output', label: 'Component result', config: {} } },
+    ];
+    const graph = {
+      nodes,
+      edges: [
+        { id: id(), source: before, target: node.id },
+        ...(node.data.kind === 'condition'
+          ? ['true', 'false'].map((branch) => ({
+              id: id(),
+              source: node.id,
+              target: after,
+              label: branch,
+              data: { branch },
+            }))
+          : [{ id: id(), source: node.id, target: after }]),
+      ],
+      settings: saved.settings,
+    };
+    const runId = createRun({
+      wid: req.workspace,
+      workflowId: w.id,
+      graph,
+      input: req.body.input,
+      mode: req.body.mode || 'preview',
+    });
+    audit(req.workspace, req.user.id, 'component.tested', `${w.id}:${node.id}`);
+    res.status(201).json({ id: runId });
+  }),
+);
 api.get('/runs', (req, res) => {
   const q = '%' + String(req.query.q || '').slice(0, 100) + '%',
     status = req.query.status || '';
@@ -559,17 +603,32 @@ api.get('/runs', (req, res) => {
 });
 function runDetails(rid, wid) {
   const run = scoped('runs', rid, wid);
+  const order = new Map(decode(run.graph).nodes.map((node, i) => [node.id, i]));
+  const steps = all('SELECT * FROM steps WHERE run_id=?', rid).sort((a, b) => {
+    if (a.started_at && b.started_at)
+      return (
+        a.started_at.localeCompare(b.started_at) || order.get(a.node_id) - order.get(b.node_id)
+      );
+    if (a.started_at) return -1;
+    if (b.started_at) return 1;
+    return order.get(a.node_id) - order.get(b.node_id);
+  });
   return {
     ...run,
     graph: decode(run.graph),
     input: decode(run.input),
     output: decode(run.output),
     usage: decode(run.usage),
-    steps: all('SELECT * FROM steps WHERE run_id=?', rid).map((s) => ({
+    steps: steps.map((s) => ({
       ...s,
       input: decode(s.input),
       output: decode(s.output),
+      checkpoint: undefined,
     })),
+    approvals: all(
+      "SELECT a.id,s.node_id,a.tool_name,a.input FROM tool_approvals a JOIN steps s ON s.id=a.step_id WHERE s.run_id=? AND a.status='pending'",
+      rid,
+    ).map((a) => ({ ...a, input: decode(a.input) })),
     events: all('SELECT * FROM events WHERE run_id=? ORDER BY id LIMIT 3000', rid).map((e) =>
       jsonRow(e, 'data'),
     ),
@@ -715,6 +774,15 @@ api.delete(
 );
 api.get('/connections', (req, res) =>
   res.json(all('SELECT * FROM connections WHERE workspace_id=?', req.workspace).map(noSecret)),
+);
+api.delete(
+  '/model-cache',
+  requireRole('administrator'),
+  route((req, res) => {
+    exec('DELETE FROM model_cache WHERE workspace_id=?', req.workspace);
+    audit(req.workspace, req.user.id, 'model.cache_cleared', req.workspace);
+    res.json({ ok: true });
+  }),
 );
 const connectionSchema = z
   .object({
@@ -893,6 +961,35 @@ api.post(
   requireRole('administrator'),
   route(async (req, res) => {
     const tool = jsonRow(scoped('tools', req.params.tid, req.workspace));
+    if (tool.config.requireApproval) {
+      const graph = {
+        nodes: [
+          { id: 'input', data: { kind: 'input', label: 'Test payload', config: {} } },
+          {
+            id: 'tool',
+            data: {
+              kind: 'tool',
+              label: tool.name,
+              config: { kind: tool.kind, toolSnapshot: tool },
+            },
+          },
+          { id: 'output', data: { kind: 'output', label: 'Tool result', config: {} } },
+        ],
+        edges: [
+          { id: 'input-tool', source: 'input', target: 'tool' },
+          { id: 'tool-output', source: 'tool', target: 'output' },
+        ],
+      };
+      const runId = createRun({
+        wid: req.workspace,
+        graph,
+        input: req.body.input || {},
+        mode: 'preview',
+      });
+      return res.status(202).json({
+        output: { runId, message: 'Review and approve this tool test in execution history' },
+      });
+    }
     const testId = id();
     const result = await executeTool(
       {
@@ -954,7 +1051,7 @@ api.get(
     scoped('collections', req.params.cid, req.workspace);
     res.json(
       all(
-        'SELECT id,name,url,status,progress,error,created_at,length(content) AS size FROM sources WHERE collection_id=? AND workspace_id=?',
+        'SELECT id,name,url,metadata,status,progress,error,created_at,length(content) AS size FROM sources WHERE collection_id=? AND workspace_id=?',
         req.params.cid,
         req.workspace,
       ),
@@ -1039,9 +1136,27 @@ api.post(
         req.params.cid,
         String(req.body.query || ''),
         req.body.topK,
+        req.body.options,
       ),
     }),
   ),
+);
+api.put(
+  '/sources/:sid/metadata',
+  requireRole('editor'),
+  route((req, res) => {
+    scoped('sources', req.params.sid, req.workspace);
+    const metadata = z
+      .record(
+        z.string().regex(/^[A-Za-z0-9_-]{1,60}$/),
+        z.union([z.string().max(500), z.number(), z.boolean()]),
+      )
+      .refine((v) => Object.keys(v).length <= 20)
+      .parse(req.body.metadata);
+    exec('UPDATE sources SET metadata=? WHERE id=?', encode(metadata), req.params.sid);
+    audit(req.workspace, req.user.id, 'source.metadata', req.params.sid);
+    res.json({ ok: true });
+  }),
 );
 api.post(
   '/sources/:sid/reindex',
@@ -1199,6 +1314,8 @@ api.put(
       })
       .parse(req.body);
     assertNoSecrets(b.settings);
+    if (b.settings.historyRetentionDays != null)
+      z.number().int().min(0).max(3650).parse(b.settings.historyRetentionDays);
     exec(
       'UPDATE workspaces SET name=?,settings=? WHERE id=?',
       b.name,
@@ -1313,30 +1430,47 @@ function appAccess(req, res, next) {
   req.application = { ...a, settings };
   next();
 }
-function invoke(req, res) {
-  const a = req.application;
+function queueApplication(a, input, conversationId = null) {
   const version = one('SELECT graph FROM versions WHERE id=?', a.version_id);
   const count = one(
     'SELECT count(*) AS count FROM runs WHERE workspace_id=? AND created_at>?',
     a.workspace_id,
     new Date(Date.now() - 60000).toISOString(),
   ).count;
-  if (count >= 60)
-    return res.status(429).json({ error: 'Workspace application rate limit reached' });
+  if (count >= 60) {
+    const error = new Error('Workspace application rate limit reached');
+    error.status = 429;
+    throw error;
+  }
   const runId = createRun({
     wid: a.workspace_id,
     workflowId: a.workflow_id,
     versionId: a.version_id,
     graph: decode(a.graph_snapshot || version.graph),
-    input: req.body.input ?? req.body,
+    input,
     mode: a.settings.mode || 'preview',
-    conversationId: req.body.conversationId || null,
+    conversationId,
   });
   exec('UPDATE runs SET application_id=? WHERE id=?', a.id, runId);
-  res
-    .status(202)
-    .json({ id: runId, status: 'queued', events: `/api/apps/${a.id}/runs/${runId}/events` });
+  return { id: runId, status: 'queued', events: `/api/apps/${a.id}/runs/${runId}/events` };
 }
+function invoke(req, res) {
+  const a = req.application;
+  const result = queueApplication(
+    a,
+    Object.hasOwn(req.body, 'input') ? req.body.input : req.body,
+    req.body.conversationId || null,
+  );
+  res.status(202).json(result);
+}
+registerApplicationMcp(app, appAccess, {
+  invoke: queueApplication,
+  status: (a, runId) => {
+    const r = scoped('runs', runId, a.workspace_id);
+    if (r.application_id !== a.id) throw new Error('Run belongs to another application');
+    return runDetails(r.id, r.workspace_id);
+  },
+});
 app.post('/api/apps/:aid/invoke', appAccess, route(invoke));
 app.post('/api/apps/:aid/webhook', appAccess, route(invoke));
 app.get(

@@ -124,7 +124,7 @@ function RunFeedback({
   }
   return (
     <details className="panel quality-card">
-      <summary>Rate this result � {data?.length || 0} reviews</summary>
+      <summary>Rate this result · {data?.length || 0} reviews</summary>
       <Field label="Feedback comment">
         <textarea
           rows={2}
@@ -145,7 +145,7 @@ function RunFeedback({
       </div>
       {data?.map((f) => (
         <p key={f.id}>
-          <strong>{f.name}</strong> �{' '}
+          <strong>{f.name}</strong> ·{' '}
           {f.rating > 0 ? 'Helpful' : f.rating < 0 ? 'Needs improvement' : 'Neutral'}
           {f.comment && ' — ' + f.comment}
         </p>
@@ -323,45 +323,55 @@ export function RunDetails({
               </button>
             ))}
           </div>
-          {step?.status === 'waiting' && (
-            <div className="approval-panel">
-              <h3>Human approval required</h3>
-              <p>
-                {run.graph.nodes.find((n: any) => n.id === step.node_id)?.data.config.prompt ||
-                  'Review the input, then approve or reject this step.'}
-              </p>
-              <div className="inline-actions">
-                <Button
-                  variant="primary"
-                  disabled={!editable(role)}
-                  onClick={async () => {
-                    await api(`${base}/runs/${run.id}/approve`, {
-                      nodeId: step.node_id,
-                      approved: true,
-                    });
-                    reload();
-                  }}
-                >
-                  <Check size={15} />
-                  Approve & continue
-                </Button>
-                <Button
-                  variant="danger"
-                  disabled={!editable(role)}
-                  onClick={async () => {
-                    await api(`${base}/runs/${run.id}/approve`, {
-                      nodeId: step.node_id,
-                      approved: false,
-                      feedback: 'Rejected in run inspector',
-                    });
-                    reload();
-                  }}
-                >
-                  Reject
-                </Button>
+          {step?.status === 'waiting' &&
+            (run.graph.nodes.find((n: any) => n.id === step.node_id)?.data.kind === 'approval' ||
+              run.approvals?.some((a: any) => a.node_id === step.node_id)) && (
+              <div className="approval-panel">
+                <h3>Human approval required</h3>
+                {run.approvals
+                  ?.filter((a: any) => a.node_id === step.node_id)
+                  .map((a: any) => (
+                    <div key={a.id}>
+                      <strong>{a.tool_name}</strong>
+                      <pre className="result-block">{pretty(a.input)}</pre>
+                    </div>
+                  ))}
+                <p>
+                  {run.graph.nodes.find((n: any) => n.id === step.node_id)?.data.config.prompt ||
+                    'Review the input, then approve or reject this step.'}
+                </p>
+                <div className="inline-actions">
+                  <Button
+                    variant="primary"
+                    disabled={!editable(role)}
+                    onClick={async () => {
+                      await api(`${base}/runs/${run.id}/approve`, {
+                        nodeId: step.node_id,
+                        approved: true,
+                      });
+                      reload();
+                    }}
+                  >
+                    <Check size={15} />
+                    Approve & continue
+                  </Button>
+                  <Button
+                    variant="danger"
+                    disabled={!editable(role)}
+                    onClick={async () => {
+                      await api(`${base}/runs/${run.id}/approve`, {
+                        nodeId: step.node_id,
+                        approved: false,
+                        feedback: 'Rejected in run inspector',
+                      });
+                      reload();
+                    }}
+                  >
+                    Reject
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
+            )}
           {step?.error && <div className="error-banner">{step.error}</div>}
           {['output', 'input'].includes(tab) ? (
             <pre className="result-block">
@@ -644,6 +654,16 @@ export function Applications(p: PageProps) {
           use the same token and a /webhook endpoint. Read the returned run endpoint for its result.
         </p>
         <pre>{`POST /api/apps/{application-id}/invoke\nAuthorization: Bearer YOUR_APPLICATION_TOKEN\nContent-Type: application/json\n\n{"input":"Research our next opportunity"}`}</pre>
+        <h3>Use this workflow from another agent</h3>
+        <p>
+          Connect a Streamable HTTP MCP client to /api/apps/&#123;application-id&#125;/mcp with the
+          same bearer token. It exposes invoke_workflow and get_run. Public chat settings do not
+          grant MCP access.
+        </p>
+        <p>
+          The repository includes JavaScript and Python clients and a command-line runner. See
+          docs/SDK.md for examples.
+        </p>
       </section>
       {editing && (
         <Modal
@@ -783,6 +803,13 @@ export function Applications(p: PageProps) {
             Copy token
           </Button>
           <pre className="result-block">{`POST ${location.origin}/api/apps/${token.id}/invoke\nAuthorization: Bearer YOUR_APPLICATION_TOKEN\n\n{"input":"Your task"}`}</pre>
+          <Field label="MCP endpoint">
+            <input
+              readOnly
+              value={`${location.origin}/api/apps/${token.id}/mcp`}
+              onFocus={(e) => e.target.select()}
+            />
+          </Field>
           <a className="btn primary" href={`/apps/${token.id}`} target="_blank" rel="noreferrer">
             Open chat
             <ExternalLink size={15} />
@@ -1010,6 +1037,9 @@ export function WorkspaceSettings(p: PageProps & { workspace: any; onUpdate: () 
   const { data: artifacts } = useData<any[]>(`${p.base}/artifacts`, p.notify);
   const [tab, setTab] = useState('general'),
     [name, setName] = useState(p.workspace?.name || '');
+  const [retentionDays, setRetentionDays] = useState(
+    p.workspace?.settings?.historyRetentionDays || 0,
+  );
   return (
     <>
       <PageHeader
@@ -1033,7 +1063,13 @@ export function WorkspaceSettings(p: PageProps & { workspace: any; onUpdate: () 
                 try {
                   await api(
                     `${p.base}/settings`,
-                    { name, settings: p.workspace.settings || {} },
+                    {
+                      name,
+                      settings: {
+                        ...(p.workspace.settings || {}),
+                        historyRetentionDays: retentionDays,
+                      },
+                    },
                     'PUT',
                   );
                   p.onUpdate();
@@ -1049,6 +1085,19 @@ export function WorkspaceSettings(p: PageProps & { workspace: any; onUpdate: () 
                   onChange={(e) => setName(e.target.value)}
                   required
                   disabled={!admin(p.role)}
+                />
+              </Field>
+              <Field
+                label="Completed run history retention (days)"
+                hint="0 keeps history. A positive value automatically deletes expired completed, failed, and cancelled runs. Active runs and evaluation evidence are retained; documents, artifacts, and audit records remain."
+              >
+                <input
+                  type="number"
+                  min="0"
+                  max="3650"
+                  disabled={!admin(p.role)}
+                  value={retentionDays}
+                  onChange={(e) => setRetentionDays(Number(e.target.value))}
                 />
               </Field>
               <Button type="submit" variant="primary" disabled={!admin(p.role)}>

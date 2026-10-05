@@ -640,6 +640,7 @@ export function Operations(p: PageProps) {
     { data: schedules, reload: loadSchedules } = useData<any[]>(`${p.base}/schedules`, p.notify),
     { data: workflows } = useData<any[]>(`${p.base}/workflows`, p.notify);
   const [modal, setModal] = useState(false);
+  const [scheduleType, setScheduleType] = useState('interval');
   useEffect(() => {
     if (!admin(p.role)) return;
     const t = setInterval(reload, 2500);
@@ -721,7 +722,11 @@ export function Operations(p: PageProps) {
                   <div className="grow">
                     <strong>{s.name}</strong>
                     <small>
-                      {s.workflow} · every {s.interval_minutes} minutes · {s.mode}
+                      {s.workflow} ·{' '}
+                      {s.cron_expression
+                        ? `${s.cron_expression} · ${s.timezone}`
+                        : `every ${s.interval_minutes} minutes`}{' '}
+                      · {s.mode}
                       <br />
                       Next: {new Date(s.next_at).toLocaleString()}
                     </small>
@@ -775,7 +780,9 @@ export function Operations(p: PageProps) {
                 await api(`${p.base}/schedules`, {
                   name: f.get('name'),
                   workflowId: f.get('workflow'),
-                  intervalMinutes: Number(f.get('interval')),
+                  ...(scheduleType === 'cron'
+                    ? { cronExpression: f.get('cron'), timezone: f.get('timezone') }
+                    : { intervalMinutes: Number(f.get('interval')) }),
                   input: f.get('input'),
                   mode: f.get('mode'),
                 });
@@ -799,16 +806,41 @@ export function Operations(p: PageProps) {
                 ))}
               </Select>
             </Field>
-            <Field label="Repeat every (minutes)">
-              <input
-                name="interval"
-                type="number"
-                min="1"
-                max="525600"
-                defaultValue="1440"
-                required
-              />
+            <Field label="Scheduling method">
+              <Select value={scheduleType} onChange={(e) => setScheduleType(e.target.value)}>
+                <option value="interval">Repeating interval</option>
+                <option value="cron">Calendar schedule</option>
+              </Select>
             </Field>
+            {scheduleType === 'interval' ? (
+              <Field label="Repeat every (minutes)">
+                <input
+                  name="interval"
+                  type="number"
+                  min="1"
+                  max="525600"
+                  defaultValue="1440"
+                  required
+                />
+              </Field>
+            ) : (
+              <>
+                <Field
+                  label="Cron expression"
+                  hint="Minute hour day month weekday. Example: 0 9 * * 1-5 for weekday mornings."
+                >
+                  <input name="cron" required defaultValue="0 9 * * 1-5" />
+                </Field>
+                <Field label="Timezone">
+                  <input
+                    name="timezone"
+                    required
+                    defaultValue={Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'}
+                    placeholder="America/Toronto"
+                  />
+                </Field>
+              </>
+            )}
             <Field label="Task input">
               <textarea name="input" rows={3} required />
             </Field>

@@ -308,6 +308,15 @@ export default function App() {
     setSelectedId(id);
     location.hash = new URLSearchParams({ page: next, ...(id ? { id } : {}) }).toString();
   }, []);
+  useEffect(() => {
+    const navigate = () => {
+      const route = new URLSearchParams(location.hash.slice(1));
+      setPage(route.get('page') || 'dashboard');
+      setSelectedId(route.get('id') || '');
+    };
+    window.addEventListener('hashchange', navigate);
+    return () => window.removeEventListener('hashchange', navigate);
+  }, []);
   const load = useCallback(async () => {
     try {
       const data = await api('/api/me');

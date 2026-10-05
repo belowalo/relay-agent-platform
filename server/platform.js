@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { all, one, exec, id, now, encode, decode, audit, transaction } from './db.js';
 import { requireRole } from './auth.js';
 import { startEvaluation, cancelEvaluation, evaluationDetail } from './evaluations.js';
+import { nextSchedule } from './schedules.js';
+import { purgeHistory } from './retention.js';
 const route = (fn) => async (req, res, next) => {
   try {
     await fn(req, res);
@@ -32,14 +34,23 @@ const evalSchema = z.object({
   threshold: z.number().min(0).max(1).default(1),
   rules: z
     .array(
-      z.object({
-        type: z.enum(['success', 'exact', 'contains', 'json', 'latency', 'tokens']),
-        path: z.string().max(100).optional(),
-        value: z.unknown().optional(),
-        schema: z.record(z.string(), z.any()).optional(),
-        maxMs: z.number().positive().optional(),
-        maxTokens: z.number().positive().optional(),
-      }),
+      z
+        .object({
+          type: z.enum(['success', 'exact', 'contains', 'json', 'latency', 'tokens']),
+          path: z.string().max(100).optional(),
+          value: z.unknown().optional(),
+          schema: z.record(z.string(), z.any()).optional(),
+          maxMs: z.number().positive().optional(),
+          maxTokens: z.number().positive().optional(),
+        })
+        .superRefine((rule, ctx) => {
+          if (rule.type === 'json' && (!rule.schema || !Object.keys(rule.schema).length))
+            ctx.addIssue({ code: 'custom', message: 'JSON evaluators need a nonempty schema' });
+          if (rule.type === 'latency' && rule.maxMs == null)
+            ctx.addIssue({ code: 'custom', message: 'Latency evaluators need maxMs' });
+          if (rule.type === 'tokens' && rule.maxTokens == null)
+            ctx.addIssue({ code: 'custom', message: 'Token evaluators need maxTokens' });
+        }),
     )
     .max(20)
     .default([]),
@@ -267,26 +278,34 @@ export function registerPlatform(api) {
         .object({
           name: z.string().min(1).max(100),
           workflowId: z.string(),
-          intervalMinutes: z.number().int().min(1).max(525600),
+          intervalMinutes: z.number().int().min(1).max(525600).optional(),
+          cronExpression: z.string().max(200).optional(),
+          timezone: z.string().max(100).default('UTC'),
           input: z.unknown(),
           mode: z.enum(['preview', 'live']).default('preview'),
         })
         .parse(req.body);
       scope('workflows', b.workflowId, req.workspace);
+      if (!b.cronExpression && !b.intervalMinutes)
+        throw new Error('Choose an interval or calendar schedule');
+      if (b.cronExpression && b.intervalMinutes) throw new Error('Choose one scheduling method');
       const sid = id();
+      const next = nextSchedule(b);
       exec(
-        'INSERT INTO schedules VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO schedules(id,workspace_id,workflow_id,name,interval_minutes,input,mode,enabled,next_at,last_run_id,created_at,cron_expression,timezone) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',
         sid,
         req.workspace,
         b.workflowId,
         b.name,
-        b.intervalMinutes,
+        b.intervalMinutes || 1,
         encode(b.input),
         b.mode,
         1,
-        Date.now() + b.intervalMinutes * 60000,
+        next,
         null,
         now(),
+        b.cronExpression || null,
+        b.timezone,
       );
       audit(req.workspace, req.user.id, 'schedule.created', sid);
       res.status(201).json({ id: sid });
@@ -300,11 +319,16 @@ export function registerPlatform(api) {
       exec(
         'UPDATE schedules SET enabled=?,next_at=? WHERE id=?',
         z.boolean().parse(req.body.enabled) ? 1 : 0,
-        Date.now() + scope('schedules', req.params.sid, req.workspace).interval_minutes * 60000,
+        nextSchedule(scope('schedules', req.params.sid, req.workspace)),
         req.params.sid,
       );
       res.json({ ok: true });
     }),
+  );
+  api.post(
+    '/history/purge',
+    requireRole('administrator'),
+    route((req, res) => res.json(purgeHistory(req.workspace, Date.now(), req.user.id))),
   );
   api.delete(
     '/schedules/:sid',

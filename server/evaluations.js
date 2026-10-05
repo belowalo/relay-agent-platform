@@ -23,43 +23,44 @@ function canonical(value) {
     : value;
 }
 export function scoreOutput(output, expected, rules, run) {
-  const checks = (rules?.length ? rules : [{ type: expected == null ? 'success' : 'exact' }]).map(
-    (rule) => {
-      const value = rule.path ? get(output, rule.path) : output;
-      let passed = false;
-      switch (rule.type) {
-        case 'success':
-          passed = run.status === 'completed';
-          break;
-        case 'exact':
-          passed =
-            JSON.stringify(canonical(value)) === JSON.stringify(canonical(rule.value ?? expected));
-          break;
-        case 'contains':
-          passed = text(value)
-            ?.toLowerCase()
-            .includes(text(rule.value ?? expected)?.toLowerCase());
-          break;
-        case 'json':
-          try {
-            validateSchema(rule.schema, typeof value === 'string' ? JSON.parse(value) : value);
-            passed = true;
-          } catch {}
-          break;
-        case 'latency':
-          passed = (run.active_ms || 0) <= rule.maxMs;
-          break;
-        case 'tokens': {
-          const usage = decode(run.usage);
-          passed = (usage.inputTokens || 0) + (usage.outputTokens || 0) <= rule.maxTokens;
-          break;
-        }
-        default:
-          throw new Error('Unsupported evaluator');
+  const checks = (
+    rules?.length ? rules : [{ type: expected === undefined ? 'success' : 'exact' }]
+  ).map((rule) => {
+    const value = rule.path ? get(output, rule.path) : output;
+    let passed = false;
+    switch (rule.type) {
+      case 'success':
+        passed = run.status === 'completed';
+        break;
+      case 'exact':
+        passed =
+          JSON.stringify(canonical(value)) ===
+          JSON.stringify(canonical(Object.hasOwn(rule, 'value') ? rule.value : expected));
+        break;
+      case 'contains':
+        passed = text(value)
+          ?.toLowerCase()
+          .includes(text(Object.hasOwn(rule, 'value') ? rule.value : expected)?.toLowerCase());
+        break;
+      case 'json':
+        try {
+          validateSchema(rule.schema, typeof value === 'string' ? JSON.parse(value) : value);
+          passed = true;
+        } catch {}
+        break;
+      case 'latency':
+        passed = (run.active_ms || 0) <= rule.maxMs;
+        break;
+      case 'tokens': {
+        const usage = decode(run.usage);
+        passed = (usage.inputTokens || 0) + (usage.outputTokens || 0) <= rule.maxTokens;
+        break;
       }
-      return { type: rule.type, passed: !!passed };
-    },
-  );
+      default:
+        throw new Error('Unsupported evaluator');
+    }
+    return { type: rule.type, passed: !!passed };
+  });
   return { score: checks.filter((c) => c.passed).length / checks.length, checks };
 }
 export function startEvaluation(wid, request) {
@@ -126,7 +127,7 @@ export function startEvaluation(wid, request) {
           eid,
           i,
           encode(cases[i].input),
-          encode(cases[i].expected),
+          Object.hasOwn(cases[i], 'expected') ? encode(cases[i].expected) : null,
           rid,
         );
       }
@@ -210,7 +211,9 @@ export function pumpEvaluations() {
         );
         continue;
       }
-      const result = scoreOutput(decode(run.output), decode(c.expected), config.rules, run);
+      const frozenCase = decode(e.dataset_snapshot).cases[c.ordinal];
+      const expected = Object.hasOwn(frozenCase, 'expected') ? frozenCase.expected : undefined;
+      const result = scoreOutput(decode(run.output), expected, config.rules, run);
       if (config.judgeConnectionId) {
         if (!c.judge_run_id) {
           const graph = {

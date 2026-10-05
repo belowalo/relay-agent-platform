@@ -1,6 +1,6 @@
 # Verification evidence
 
-Verified locally on Windows, October 4, 2026. Version 0.2 integration suite: 30 passing tests; browser suite: 7 passing journeys. Node.js 22.16, SQLite 3.49.1, React 19, React Flow 12, Express 5, Vite 8, TypeScript 7. Exact versions are recorded in `package-lock.json`.
+Release verification in October 2026 uses Windows locally and GitHub Actions on Ubuntu. Version 0.3: 39 passing integration tests and 8 passing browser journeys. Node.js 22.16 locally, Node 24 in CI, SQLite, React 19, React Flow 12, Express 5, Vite 8, TypeScript 7. Exact package versions are recorded in `package-lock.json`.
 
 ## Build and backend
 
@@ -35,7 +35,7 @@ A public GitHub API request through the production HTTP/DNS guard returned 200 f
 
 ## Browser journeys
 
-Seven Chromium journeys pass against the production build, separate port, and separate test database:
+Eight Chromium journeys exercise the production build, separate port, and separate test database:
 
 1. Account → dashboard → canvas → edit → save → reload → preview → inspect output → upload knowledge → cited retrieval → publish locally → light theme.
 2. Library node addition → undo/redo → clipboard copy/paste → disconnected-node validation → saved revision → restore → duplicate → undo → complete-graph validation.
@@ -47,17 +47,19 @@ Seven Chromium journeys pass against the production build, separate port, and se
 
 7. Semantic collection creation/upload retrieves a medical paraphrase that keyword search misses; switching to hybrid restores semantic retrieval using the real local model.
 
+8. Guardrail component test redacts emails; restricted input fails; tool approval exposes exact arguments and resumes an artifact write; timezone-aware cron and history-retention settings persist. The semantic journey also checks metadata editing and filters. URL fragment navigation now updates the current page.
+
 The main and expansion journeys check JavaScript page errors. Screenshots are saved under ignored `test-results/`: `dashboard-dark.png`, `builder-dark.png`, `dashboard-light.png`, `widget.png`. Dashboard, canvas, theme, evaluation and operations screenshots are visually inspected. Metrics come from stored records; empty history is shown honestly.
 
 ## Unverified and bounded behavior
 
 - No successful hosted-provider reasoning or billing verification; the authorized OpenAI connection reported exhausted API credits.
-- Docker build and reverse-proxy deployment are prepared but untested here; nothing was published publicly.
+- Docker build and reverse-proxy deployment are prepared but untested here; the source repository is public, while the running application remains local.
 - Semantic and hybrid search are implemented; vector ranking scans SQLite collections. No OCR, dedicated vector service or unrestricted crawler.
 - Multiple execution workers on one shared host are verified; no PostgreSQL/Redis multi-host backend or production load qualification.
 - External side-effect guards prevent automatic uncertain replay, not exactly-once remote execution.
 - Recorded usage limits allow in-flight overshoot; they are not hard spending caps.
-- Display queries bound historical rows/events while retaining underlying database history. No automated retention/purge scheduler.
+- Opt-in history retention purges expired terminal runs while preserving active/evaluation execution trees. Artifacts, documents, audit and backups require separate retention.
 - Invitations remain manually shared. MFA is verified locally; OIDC/SMTP recovery are fixture-verified and need live administrator configuration.
 
 See the feature checklist for implementation coverage and deployment instructions for operational bounds. Relay is not claimed to match every production capability of Flowise, Langflow, or Dify.
@@ -69,6 +71,21 @@ See the feature checklist for implementation coverage and deployment instruction
 - Two separate worker processes share run capacity. Killing an owning process allows the surviving worker to reclaim the read and complete it with a higher generation. Cancellation arrives through the API process and remains cancelled after the remote delay. Eight writes execute eight times under competing workers; a due schedule creates one additional run atomically. This is bounded test evidence, not an exactly-once remote guarantee.
 - Frozen datasets reveal a changed workflow's score regression, retain original cases after edits, and compare revision scores. LLM judging persists a real fixture-generated grade and includes judge tokens. Missing token prices remain unknown rather than reported as free. Prompt revisions reject stale saves; run feedback persists.
 - MFA requires an authenticator/recovery code, rejects replay and supports one-use recovery. Password change invalidates old sessions. OIDC fixture verifies browser state, PKCE, signatures, nonce and returning identity. SMTP fixture receives a password-reset message; the one-use reset changes the password and invalidates sessions.
-- Build/type checking and the full seven-journey Chromium suite pass. `npm audit` reports zero package vulnerabilities at the verified lockfile; this is dependency evidence, not a security audit.
+- Build/type checking and the full eight-journey Chromium suite pass. `npm audit` reports zero package vulnerabilities at the verified lockfile; this is dependency evidence, not a security audit.
 
-No paid performance comparison or competitor-superiority benchmark was run. Docker, public deployment, production load qualification and live OIDC/SMTP configuration remain outside verified delivery.
+No paid performance comparison or competitor-superiority benchmark was run. Docker, public application deployment, production load qualification and live OIDC/SMTP configuration remain outside verified delivery.
+
+## Version 0.3 evidence
+
+Nine additional runtime integration tests use a separate API process/database and actual local HTTP/MCP providers:
+
+- Guardrails fail before an external action and validate/redact structured payloads.
+- Rate-limited model fallback renders prompt variables and prices the actual connection. Encrypted cache hits cause no second provider call. Cache deletion restores calls. Authentication and partial streams never fall back.
+- Source metadata/ID/name filters, semantic thresholds, per-source caps and the Cohere-compatible rerank contract select expected evidence.
+- Isolated component tests bypass other graph nodes without changing the saved workflow.
+- Explicit null expectations fail on incorrect output; incomplete JSON/latency/token evaluator rules are rejected.
+- Calendar parsing crosses Toronto's daylight-saving change correctly; invalid zones/expressions are rejected. Retention is off by default, purges an expired run when enabled and preserves evaluation evidence.
+- Tool approval survives an API restart, resumes exact model-selected arguments once and records the expected two model calls. Rejection performs no external write.
+- JavaScript, Python, CLI and the official MCP SDK invoke real published runs. Streaming yields persisted completion. Foreign application runs, missing credentials and rotated tokens are rejected.
+
+The public repository runs build/type checking, all integration tests, all browser journeys and formatting checks in GitHub Actions. Runtime data, provider credentials, model caches, screenshots and test databases are ignored by Git. A synthetic UI screenshot may be included explicitly in documentation; no user workspace screenshot is published.

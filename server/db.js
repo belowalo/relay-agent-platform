@@ -12,6 +12,10 @@ for (const [version, file] of [
   [3, '003-execution-clock.sql'],
   [4, '004-platform-expansion.sql'],
   [5, '005-security-recovery.sql'],
+  [6, '006-runtime-controls.sql'],
+  [7, '007-source-metadata.sql'],
+  [8, '008-tool-approvals.sql'],
+  [9, '009-calendar-schedules.sql'],
 ]) {
   db.exec('BEGIN IMMEDIATE');
   try {

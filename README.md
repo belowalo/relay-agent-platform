@@ -1,6 +1,6 @@
 # Relay
 
-A persistent local platform for building, running, publishing and evaluating teams of AI agents. Version 0.2 adds semantic search, evaluations, prompt revisions, recurring workflows, multiple execution workers and account security.
+A persistent local platform for building, running, publishing and evaluating teams of AI agents. Version 0.3 adds policy guardrails, approval gates for agent-selected tools, model fallback and encrypted caching, filtered/reranked retrieval, MCP publication, JavaScript/Python clients, a CLI, calendar schedules, and opt-in history retention.
 
 The core features run locally. Full commercial parity is not claimed: multi-host infrastructure, a broad catalog of native vendor connectors, large-corpus vector storage and production load qualification remain gaps. An authorized OpenAI connection returned exhausted API credits; successful hosted-model reasoning still needs a funded or free-tier provider connection. Development preview is deterministic and labeled. Direct tool/retrieval nodes perform real actions even in preview.
 
@@ -28,7 +28,9 @@ Open [Relay production build](http://127.0.0.1:4311). The default database is `d
 
 Open a workflow, select an agent, and configure instructions, model, tools, knowledge, memory and limits. Connect nodes to establish data dependencies. Condition branches use `true`/`false` labels. Save a revision and run a task in Development preview or Live. Select a node or run bar to inspect streamed text, assignments, tool calls, outputs, usage and failures.
 
-The canvas supports drag/drop, pan/zoom, minimap, selection, copy/paste, duplicate, undo/redo, validation, autosave, import/export and revision restoration. Components include input/output, orchestrators, specialists, models, tools, retrieval, conditions, parallel/join, bounded loops, approvals, transformations and reusable workflows. Human and nested checkpoints survive restarts.
+The canvas supports drag/drop, pan/zoom, minimap, selection, copy/paste, duplicate, undo/redo, validation, autosave, import/export and revision restoration. Components include input/output, orchestrators, specialists, models, tools, retrieval, conditions, parallel/join, bounded loops, approvals, transformations, policy guardrails and reusable workflows. **Test component** runs a saved component with a supplied payload and stores the real result. Human and nested checkpoints survive restarts.
+
+Policy guardrails enforce character limits, JSON schemas and restricted phrases, or redact emails and exact phrases. They are explicit rules, not comprehensive AI moderation. Place them before models/actions or after generated text. Redaction changes the step's outgoing data; original input remains in run history and explicit `{{task}}` references. Agent instructions support `{{input.field}}` and `{{task.field}}`; missing variables fail instead of silently inserting empty text.
 
 ## Connect models and tools
 
@@ -37,6 +39,10 @@ In **Model connections**, use a quick provider setup for Groq, OpenAI, Anthropic
 OpenAI-compatible endpoints use streaming `/chat/completions`; Anthropic uses streaming `/messages`. Specify the base URL and exact model offered by your provider. Local servers can omit a key if they allow it; administrators enable private network access per connection. Optional token prices provide estimates rather than guessed billing totals.
 
 Credentials are encrypted on the server and omitted from API responses and workflow exports. Choose **Reusable API credential** for tool-only tokens.
+
+In an agent's **Reliability & caching** settings, select ordered fallback connections. Eligible rate limits, server errors and network failures use the next connection's default model; authentication errors and partially streamed output do not fail over. Opt-in model caching lasts at most one day, is encrypted and workspace scoped, and is disabled when tools are assigned. Clear it in Model connections. Cache hits record zero new model tokens; fallback estimates use the actual connection's prices. Estimates exclude embedding, reranking and external tool charges.
+
+Enable **Require a human decision** on a tool to gate direct and agent-selected actions. Inspect the exact arguments in the run inspector, then approve or reject. Model-selected calls persist before the checkpoint, so approval resumes the reviewed request without asking the model to select it again. Approval-protected tool tests create a reviewable run.
 
 | Integration     | Supported execution                                                                        |
 | --------------- | ------------------------------------------------------------------------------------------ |
@@ -56,6 +62,8 @@ Collections accept PDF, DOCX, TXT, Markdown, CSV, JSON and HTML uploads up to 15
 
 Choose keyword, semantic or hybrid search. Local CPU embeddings produce 384-dimensional vectors; first use downloads model files, then embeddings work without API credits. Hybrid search combines semantic and FTS rankings. Collection API configuration can select an OpenAI-compatible embedding connection. Vectors currently rank by scanning a collection in SQLite; large corpora need dedicated vector storage. Scanned PDFs require external OCR.
 
+Edit source metadata, then use **Retrieval controls** in Knowledge or a retrieval node. Supported controls include exact metadata filters, source IDs, source name fragments, per-source passage limits and semantic score thresholds. An optional workspace connection's `/rerank` endpoint uses the Cohere-compatible request/response contract; add a rerank model and optional score threshold. Hosted reranking is fixture-verified and needs your provider connection.
+
 Agents support conversation and persistent memory. Inspect or delete it in Settings. Knowledge, vectors, memory, files and SQL data are workspace scoped.
 
 ## Quality and recurring work
@@ -64,7 +72,9 @@ Agents support conversation and persistent memory. Inspect or delete it in Setti
 
 **Prompt library** saves instruction revisions. Use **Use a saved prompt** in the builder to copy a revision into an agent. Library edits do not silently change workflows. Run inspection supports ratings and comments.
 
-**Operations** shows worker capacity, queue states, seven-day success/latency/usage metrics and recent failures. Administrators schedule workflows at minute intervals, pause/delete schedules and inspect the last run. Advancement and enqueueing are atomic. After downtime, one overdue run starts rather than replaying every missed interval. Live evaluations and schedules consume provider quota and execute configured tools.
+**Operations** shows worker capacity, queue states, seven-day success/latency/usage metrics and recent failures. Administrators choose minute intervals or five-field cron schedules with an IANA timezone, pause/delete schedules and inspect the last run. Advancement and enqueueing are atomic. After downtime, one overdue run starts rather than replaying every missed occurrence. Live evaluations and schedules consume provider quota and execute configured tools.
+
+**Settings** offers completed-run history retention, disabled by default. Positive days enable bounded automatic deletion of expired terminal runs and their steps/events/action ledgers. Active execution trees and evaluation evidence are protected. Documents, artifacts and audit records remain; backups and SQLite free pages need separate retention policies. This is not forensic secure erasure.
 
 ## Accounts and permissions
 
@@ -82,6 +92,9 @@ Publish a saved workflow through **Applications**. Published versions freeze gra
 - API: `POST /api/apps/{id}/invoke`; webhook: `POST /api/apps/{id}/webhook`.
 - Status: `GET /api/apps/{id}/runs/{runId}`; streaming: append `/events`.
 - API/webhook access requires the application Bearer token, shown once and rotatable.
+- MCP: `POST /api/apps/{id}/mcp` exposes `invoke_workflow` and `get_run` over stateless Streamable HTTP, always token authenticated.
+
+See [SDK and CLI examples](docs/SDK.md) for JavaScript, Python, command-line and MCP use.
 
 ```javascript
 const response = await fetch('http://127.0.0.1:4311/api/apps/APP_ID/invoke', {
@@ -92,7 +105,7 @@ const response = await fetch('http://127.0.0.1:4311/api/apps/APP_ID/invoke', {
 const run = await response.json(); // persistent run ID, 202 Accepted
 ```
 
-Nothing is publicly deployed by publishing inside the local app.
+The source repository is public at [belowalo/relay-agent-platform](https://github.com/belowalo/relay-agent-platform). Publishing an application inside Relay does not deploy it to a public server. Credentials, local databases and runtime data are excluded from Git.
 
 ## Workers and durability
 

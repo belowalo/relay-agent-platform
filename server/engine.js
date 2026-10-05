@@ -1,8 +1,9 @@
 import { all, one, exec, id, now, decode, encode, transaction, safeError, redact } from './db.js';
 import { validateGraph } from './catalog.js';
 import { modelCall } from './providers.js';
-import { getTool, executeTool, validateSchema } from './tools.js';
+import { getTool, executeTool, validateSchema, ToolApprovalRequired } from './tools.js';
 import { retrieve } from './knowledge.js';
+import { guardInput } from './guardrails.js';
 import {
   registerWorker,
   heartbeat,
@@ -147,6 +148,7 @@ function pauseClock(runId) {
   exec('UPDATE runs SET active_ms=active_ms+?,active_since=NULL WHERE id=?', delta, runId);
 }
 async function executeAgent(ctx, config, input, orchestrator = false) {
+  const checkpoint = decode(one('SELECT checkpoint FROM steps WHERE id=?', ctx.stepId)?.checkpoint);
   const memories =
     config.memory === 'persistent'
       ? all(
@@ -164,21 +166,26 @@ async function executeAgent(ctx, config, input, orchestrator = false) {
             Math.max(1, Math.min(30, Number(config.memoryWindow) || 6)),
           )
         : [];
-  const knowledge = [];
-  for (const collectionId of config.knowledgeIds || [])
+  const knowledge = checkpoint?.knowledge || [];
+  for (const collectionId of checkpoint ? [] : config.knowledgeIds || [])
     knowledge.push(
       ...(await retrieve(
         ctx.wid,
         collectionId,
-        typeof ctx.runInput === 'string' ? ctx.runInput : stringify(ctx.runInput),
+        typeof input === 'string' ? input : stringify(input),
         config.topK || 4,
+        config.retrievalOptions,
       )),
     );
   let task = input;
   if (input?.assignments) {
     const assigned = input.assignments.find((a) => a.nodeId === ctx.node.id);
     if (assigned) {
-      task = { task: assigned.task, originalTask: ctx.runInput, plan: input.plan };
+      task = {
+        task: assigned.task,
+        originalTask: Object.hasOwn(input, 'context') ? input.context : ctx.runInput,
+        plan: input.plan,
+      };
       ctx.emit('agent.assignment', {
         from: input.orchestrator,
         to: ctx.node.id,
@@ -193,10 +200,10 @@ async function executeAgent(ctx, config, input, orchestrator = false) {
   const planning = orchestrator
     ? `You supervise these connected specialists: ${connected.map((n) => `${n.id}: ${n.data.label} (${n.data.config?.role || n.data.config?.instructions || ''})`).join('; ')}. Return JSON with {"plan":"...","assignments":[{"nodeId":"exact specialist id","task":"specific task"}]}. The dependency graph dispatches these tasks concurrently and collects their results downstream.`
     : '';
-  const messages = [
+  let messages = [
     {
       role: 'system',
-      content: `${config.instructions || 'Perform your assigned task.'}\n${planning}\n${config.outputSchema ? 'Return JSON conforming to: ' + encode(config.outputSchema) : ''}\n${knowledge.length ? 'Retrieved context with citations:\n' + stringify(knowledge) : ''}\n${
+      content: `${renderPrompt(config.instructions || 'Perform your assigned task.', { input: task, task: ctx.runInput })}\n${planning}\n${config.outputSchema ? 'Return JSON conforming to: ' + encode(config.outputSchema) : ''}\n${knowledge.length ? 'Retrieved context with citations:\n' + stringify(knowledge) : ''}\n${
         memories.length
           ? 'Prior memory:\n' +
             memories
@@ -211,47 +218,67 @@ async function executeAgent(ctx, config, input, orchestrator = false) {
   const tools =
     config.toolSnapshots || (config.toolIds || []).map((toolId) => getTool(ctx.wid, toolId));
   const maxRounds = Math.max(1, Math.min(12, Number(config.maxSteps) || 5));
-  for (let round = 0; round < maxRounds; round++) {
-    ctx.emit('agent.message', {
-      role: 'user',
-      content: messages.findLast((m) => m.role === 'user')?.content,
-      round,
-    });
-    const usageBefore = decode(one('SELECT usage FROM runs WHERE id=?', ctx.run.id).usage);
-    if (
-      (usageBefore.inputTokens || 0) + (usageBefore.outputTokens || 0) >=
-      Number(ctx.graph.settings?.maxTokens || 50000)
-    )
-      throw new Error('Workflow usage limit reached; no further model calls will start');
-    const result = await modelCall(
-      { ...ctx, mode: ctx.run.mode, onToken: (token) => ctx.emit('model.token', { token }) },
-      {
-        ...config,
-        label: ctx.node.data.label,
-        ...(orchestrator ? { outputSchema: { type: 'object' } } : {}),
-      },
-      messages,
-      tools,
-    );
-    ctx.assertLease();
-    persistUsage(ctx.run.id, connectionUsage(ctx.wid, config, result.usage));
-    ctx.emit('model.usage', result.usage);
-    ctx.emit('agent.message', {
-      role: 'assistant',
-      content: result.text,
-      toolCalls: result.toolCalls,
-      round,
-    });
-    if (result.toolCalls.length) {
-      messages.push({
-        role: 'assistant',
-        content: result.text || null,
-        tool_calls: result.toolCalls.map((c) => ({
-          id: c.id,
-          type: 'function',
-          function: { name: c.name, arguments: encode(c.arguments) },
-        })),
+  if (checkpoint) messages = checkpoint.messages;
+  for (let round = checkpoint?.round || 0; round < maxRounds; round++) {
+    let result = checkpoint?.round === round ? checkpoint.result : null;
+    if (!result) {
+      ctx.emit('agent.message', {
+        role: 'user',
+        content: messages.findLast((m) => m.role === 'user')?.content,
+        round,
       });
+      const usageBefore = decode(one('SELECT usage FROM runs WHERE id=?', ctx.run.id).usage);
+      if (
+        (usageBefore.inputTokens || 0) + (usageBefore.outputTokens || 0) >=
+        Number(ctx.graph.settings?.maxTokens || 50000)
+      )
+        throw new Error('Workflow usage limit reached; no further model calls will start');
+      result = await modelCall(
+        { ...ctx, mode: ctx.run.mode, onToken: (token) => ctx.emit('model.token', { token }) },
+        {
+          ...config,
+          label: ctx.node.data.label,
+          ...(orchestrator ? { outputSchema: { type: 'object' } } : {}),
+        },
+        messages,
+        tools,
+      );
+      ctx.assertLease();
+      persistUsage(
+        ctx.run.id,
+        connectionUsage(
+          ctx.wid,
+          { ...config, connectionId: result.connectionId || config.connectionId },
+          result.usage,
+        ),
+      );
+      ctx.emit('model.usage', result.usage);
+      ctx.emit('agent.message', {
+        role: 'assistant',
+        content: result.text,
+        toolCalls: result.toolCalls,
+        round,
+      });
+      // Save model-selected arguments before asking a human. Resuming reuses this exact call.
+      exec(
+        'UPDATE steps SET checkpoint=? WHERE id=?',
+        encode({ round, messages, result, knowledge }),
+        ctx.stepId,
+      );
+    }
+    if (result.toolCalls.length) {
+      const nextMessages = [
+        ...messages,
+        {
+          role: 'assistant',
+          content: result.text || null,
+          tool_calls: result.toolCalls.map((c) => ({
+            id: c.id,
+            type: 'function',
+            function: { name: c.name, arguments: encode(c.arguments) },
+          })),
+        },
+      ];
       for (const call of result.toolCalls) {
         const tool = tools.find((t) => t.id === call.name);
         if (!tool) throw new Error('Model requested an unassigned tool');
@@ -261,8 +288,14 @@ async function executeAgent(ctx, config, input, orchestrator = false) {
           call.arguments,
           `round-${round}-tool-${call.name}-${result.toolCalls.indexOf(call)}`,
         );
-        messages.push({ role: 'tool', tool_call_id: call.id, content: stringify(output) });
+        nextMessages.push({ role: 'tool', tool_call_id: call.id, content: stringify(output) });
       }
+      messages = nextMessages;
+      exec(
+        'UPDATE steps SET checkpoint=? WHERE id=?',
+        encode({ round: round + 1, messages, result: null, knowledge }),
+        ctx.stepId,
+      );
       continue;
     }
     let output = result.text;
@@ -273,7 +306,7 @@ async function executeAgent(ctx, config, input, orchestrator = false) {
           orchestrator: ctx.node.id,
           assignments: connected.map((n) => ({
             nodeId: n.id,
-            task: `${n.data.label}: ${stringify(ctx.runInput)}`,
+            task: `${n.data.label}: ${stringify(input)}`,
           })),
           context: input,
         };
@@ -291,6 +324,7 @@ async function executeAgent(ctx, config, input, orchestrator = false) {
         )
           throw new Error('Orchestrator did not assign a task to every connected specialist');
         output.orchestrator = ctx.node.id;
+        output.context = input;
       }
       ctx.emit('orchestrator.plan', output);
     } else if (config.outputSchema) {
@@ -325,6 +359,11 @@ registerNode('input', (ctx) => ctx.runInput);
 registerNode('output', (ctx, c, input) => input);
 registerNode('parallel', (ctx, c, input) => input);
 registerNode('join', (ctx, c, input) => input);
+registerNode('guardrail', (ctx, c, input) => {
+  const output = guardInput(c, input);
+  ctx.emit('guardrail.passed', { redacted: stringify(input) !== stringify(output) });
+  return output;
+});
 registerNode('agent', (ctx, c, input) => executeAgent(ctx, c, input));
 registerNode('model', (ctx, c, input) =>
   executeAgent(ctx, { ...c, toolIds: [], memory: 'none', maxSteps: 1 }, input),
@@ -352,6 +391,7 @@ registerNode('knowledge', async (ctx, c, input) => ({
     c.collectionId,
     typeof input === 'string' ? input : stringify(input),
     c.topK,
+    c.retrievalOptions,
   ),
 }));
 registerNode('condition', (ctx, c, input) => {
@@ -380,6 +420,14 @@ registerNode('transform', (ctx, c, input) => {
     );
   return input;
 });
+export function renderPrompt(template, context) {
+  return String(template).replace(/\{\{\s*(input|task)(?:\.([^}]+))?\s*\}\}/g, (_, root, path) => {
+    const value = path ? getPath(context[root], path.trim()) : context[root];
+    if (value === undefined)
+      throw new Error('Prompt variable is missing: ' + root + (path ? '.' + path.trim() : ''));
+    return stringify(value);
+  });
+}
 registerNode('approval', (ctx, c, input) => {
   exec("UPDATE steps SET status='waiting',input=? WHERE id=?", encode(input), ctx.stepId);
   ctx.emit('approval.required', { prompt: c.prompt || 'Approve this result to continue', input });
@@ -499,7 +547,7 @@ async function executeStep(run, node, step, input) {
     }
     if (one('SELECT status FROM runs WHERE id=?', run.id).status === 'cancelled') return;
     exec(
-      "UPDATE steps SET status='completed',output=?,finished_at=?,error=NULL WHERE id=?",
+      "UPDATE steps SET status='completed',output=?,finished_at=?,error=NULL,checkpoint=NULL WHERE id=?",
       encode(output),
       now(),
       key,
@@ -513,6 +561,10 @@ async function executeStep(run, node, step, input) {
   } catch (e) {
     if (!owns(run)) return;
     if (one('SELECT status FROM runs WHERE id=?', run.id).status === 'cancelled') return;
+    if (e instanceof ToolApprovalRequired) {
+      exec("UPDATE steps SET status='waiting',error=NULL WHERE id=?", key);
+      return;
+    }
     const uncertain = one('SELECT id FROM actions WHERE step_id=? AND side_effect=1', key);
     const retries = Math.max(0, Math.min(3, Number(cfg.retries) || 0));
     if (step.attempt < retries && !uncertain && !signal.aborted) {
@@ -724,6 +776,35 @@ export function approveStep(runId, nodeId, approved, feedback = '') {
     nodeId,
   );
   if (!step) throw new Error('This step is not waiting for approval');
+  const run = one('SELECT graph FROM runs WHERE id=?', runId);
+  const node = decode(run.graph).nodes.find((n) => n.id === nodeId);
+  const pending = all(
+    "SELECT id FROM tool_approvals WHERE step_id=? AND status='pending'",
+    step.id,
+  );
+  if (pending.length) {
+    transaction(() => {
+      exec(
+        "UPDATE tool_approvals SET status=? WHERE step_id=? AND status='pending'",
+        approved ? 'approved' : 'rejected',
+        step.id,
+      );
+      exec(
+        'UPDATE steps SET status=?,error=? WHERE id=?',
+        approved ? 'queued' : 'failed',
+        approved ? null : 'Tool approval rejected: ' + feedback,
+        step.id,
+      );
+      exec("UPDATE runs SET status='queued',active_since=NULL WHERE id=?", runId);
+      emit(runId, approved ? 'approval.accepted' : 'approval.rejected', nodeId, {
+        feedback,
+        toolActions: pending.map((a) => a.id),
+      });
+    });
+    return;
+  }
+  if (node?.data.kind !== 'approval')
+    throw new Error('This step is waiting for a child workflow, not an approval');
   exec(
     'UPDATE steps SET status=?,output=?,error=?,finished_at=? WHERE id=?',
     approved ? 'completed' : 'failed',
@@ -752,8 +833,15 @@ export function retryRun(runId) {
     );
   for (const step of states(runId).filter((s) =>
     ['failed', 'skipped', 'cancelled'].includes(s.status),
-  ))
-    exec("UPDATE steps SET status='queued',error=NULL,finished_at=NULL WHERE id=?", step.id);
+  )) {
+    const checkpoint = decode(step.checkpoint);
+    if (checkpoint?.result && !checkpoint.result.toolCalls?.length) checkpoint.result = null;
+    exec(
+      "UPDATE steps SET status='queued',error=NULL,finished_at=NULL,checkpoint=? WHERE id=?",
+      checkpoint ? encode(checkpoint) : null,
+      step.id,
+    );
+  }
   exec(
     "UPDATE runs SET status='queued',error=NULL,finished_at=NULL,active_ms=0,active_since=NULL,created_at=? WHERE id=?",
     now(),

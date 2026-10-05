@@ -174,6 +174,20 @@ export function Connections(p: PageProps) {
             </p>
           </div>
         </div>
+        {admin(p.role) && (
+          <Button
+            onClick={async () => {
+              try {
+                await api(`${p.base}/model-cache`, undefined, 'DELETE');
+                p.notify('Workspace model cache cleared');
+              } catch (e) {
+                p.notify((e as Error).message, true);
+              }
+            }}
+          >
+            Clear model response cache
+          </Button>
+        )}
       </div>
       {editing && (
         <Modal
@@ -718,6 +732,14 @@ export function Tools(p: PageProps) {
                 hint="Use inputSchema and outputSchema for JSON schema validation. Reference credentials by connectionId."
               />
             </details>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={!!editing.config.requireApproval}
+                onChange={(e) => cfg('requireApproval', e.target.checked)}
+              />
+              Require a human decision before this tool executes
+            </label>
             <div className="modal-actions">
               <Button variant="primary" type="submit">
                 Save tool
@@ -753,6 +775,16 @@ export function Tools(p: PageProps) {
             {busy ? 'Running…' : 'Execute tool'}
           </Button>
           {testResult !== null && <pre className="result-block">{pretty(testResult)}</pre>}
+          {testResult?.runId && (
+            <Button
+              onClick={() => {
+                setTest(null);
+                p.go('history', testResult.runId);
+              }}
+            >
+              Review tool approval
+            </Button>
+          )}
         </Modal>
       )}
       {deleting && (

@@ -11,6 +11,7 @@ import {
   applyNodeChanges,
   applyEdgeChanges,
   useReactFlow,
+  useUpdateNodeInternals,
   type Node,
   type Edge,
   type NodeChange,
@@ -74,6 +75,7 @@ const kindIcons: Record<string, any> = {
   join: Layers,
   approval: ShieldCheck,
   transform: Braces,
+  guardrail: ShieldCheck,
   subworkflow: WorkflowIcon,
 };
 function WorkflowIcon(props: any) {
@@ -160,6 +162,7 @@ function BuilderInner(p: PageProps & { workflowId: string }) {
     [versions, setVersions] = useState<any[] | null>(null),
     [showSettings, setShowSettings] = useState(false),
     [showRun, setShowRun] = useState(false),
+    [testingNode, setTestingNode] = useState(''),
     [mode, setMode] = useState('preview'),
     [task, setTask] = useState(''),
     [taskFormat, setTaskFormat] = useState('text'),
@@ -169,8 +172,10 @@ function BuilderInner(p: PageProps & { workflowId: string }) {
     [validation, setValidation] = useState<string[] | null>(null),
     [inspectorTab, setInspectorTab] = useState('configure');
   const flow = useReactFlow(),
+    updateNodeInternals = useUpdateNodeInternals(),
     revision = useRef(1),
     dirty = useRef(false),
+    leaving = useRef(false),
     initialized = useRef(false),
     saveLock = useRef(false),
     editCounter = useRef(0),
@@ -185,6 +190,13 @@ function BuilderInner(p: PageProps & { workflowId: string }) {
   nameRef.current = name;
   metaRef.current = { description, projectId };
   const editable = p.role !== 'viewer';
+  const nodeIds = nodes.map((n) => n.id).join(',');
+  useEffect(() => {
+    if (!nodeIds) return;
+    // Restored nodes can reuse DOM elements without triggering ResizeObserver.
+    // Refresh handles and measurements after the new graph has mounted.
+    updateNodeInternals(nodeIds.split(','));
+  }, [nodeIds, updateNodeInternals]);
   useEffect(() => {
     if (workflow && !initialized.current) {
       setNodes(workflow.graph.nodes);
@@ -225,6 +237,7 @@ function BuilderInner(p: PageProps & { workflowId: string }) {
     saveLock.current = true;
     setSaveState('Saving…');
     const counter = editCounter.current;
+    let succeeded = false;
     try {
       const r = await api(
         `${p.base}/workflows/${p.workflowId}`,
@@ -239,13 +252,22 @@ function BuilderInner(p: PageProps & { workflowId: string }) {
       revision.current = r.revision;
       dirty.current = editCounter.current !== counter;
       setSaveState(dirty.current ? 'Unsaved changes' : 'Saved');
+      succeeded = true;
     } catch (e) {
       setSaveState('Save failed');
       p.notify((e as Error).message, true);
     } finally {
       saveLock.current = false;
+      if (succeeded && leaving.current && dirty.current) void save();
     }
   }, [p.base, p.workflowId, p.notify, editable]);
+  useEffect(() => {
+    leaving.current = false;
+    return () => {
+      leaving.current = true;
+      void save();
+    };
+  }, [save]);
   useEffect(() => {
     const timer = setInterval(() => {
       if (dirty.current && saveState !== 'Save failed') void save();
@@ -396,14 +418,18 @@ function BuilderInner(p: PageProps & { workflowId: string }) {
     try {
       await save();
       if (dirty.current) throw new Error('Save the workflow successfully before running');
-      const r = await api(`${p.base}/workflows/${p.workflowId}/runs`, {
-        input: taskFormat === 'json' ? JSON.parse(task) : task,
-        mode,
-        conversationId: `workflow-${p.workflowId}`,
-      });
+      const r = await api(
+        `${p.base}/workflows/${p.workflowId}${testingNode ? '/nodes/' + testingNode + '/test' : '/runs'}`,
+        {
+          input: taskFormat === 'json' ? JSON.parse(task) : task,
+          mode,
+          conversationId: `workflow-${p.workflowId}`,
+        },
+      );
       setRunId(r.id);
       setRun(null);
       setShowRun(false);
+      setTestingNode('');
       setDrawer(false);
       setInspectorTab('activity');
       p.notify(mode === 'preview' ? 'Development preview started' : 'Live execution started');
@@ -606,7 +632,14 @@ function BuilderInner(p: PageProps & { workflowId: string }) {
               Cancel now
             </Button>
           ) : (
-            <Button variant="primary" disabled={!editable} onClick={() => setShowRun(true)}>
+            <Button
+              variant="primary"
+              disabled={!editable}
+              onClick={() => {
+                setTestingNode('');
+                setShowRun(true);
+              }}
+            >
               <Play size={15} fill="currentColor" />
               Run workflow
             </Button>
@@ -839,6 +872,18 @@ function BuilderInner(p: PageProps & { workflowId: string }) {
             {node ? (
               <>
                 <h3>{String(node.data.label)}</h3>
+                {!['input', 'output'].includes(kind) && (
+                  <Button
+                    disabled={!editable}
+                    onClick={() => {
+                      setTestingNode(node.id);
+                      setShowRun(true);
+                    }}
+                  >
+                    <Play size={14} />
+                    Test component
+                  </Button>
+                )}
                 <div className="tabs">
                   <button
                     className={inspectorTab === 'configure' ? 'active' : ''}
@@ -910,7 +955,10 @@ function BuilderInner(p: PageProps & { workflowId: string }) {
                             ))}
                           </Select>
                         </Field>
-                        <Field label="Instructions">
+                        <Field
+                          label="Instructions"
+                          hint="Use {{input.field}} for this step’s payload or {{task.field}} for the original task. Missing variables fail the run."
+                        >
                           <textarea
                             rows={6}
                             disabled={!editable}
@@ -938,6 +986,55 @@ function BuilderInner(p: PageProps & { workflowId: string }) {
                         <small className="inspector-note">
                           Development preview runs without a model. Live runs use this connection.
                         </small>
+                        <details>
+                          <summary>Reliability & caching</summary>
+                          <p className="muted">
+                            Fallbacks run in the order shown on rate limits or server errors, before
+                            any text is streamed.
+                          </p>
+                          {connections
+                            ?.filter(
+                              (c) => c.provider !== 'credential' && c.id !== config.connectionId,
+                            )
+                            .map((c) => (
+                              <label className="checkbox" key={c.id}>
+                                <input
+                                  type="checkbox"
+                                  disabled={!editable}
+                                  checked={config.fallbackConnectionIds?.includes(c.id) || false}
+                                  onChange={(e) =>
+                                    updateConfig(
+                                      'fallbackConnectionIds',
+                                      e.target.checked
+                                        ? [...(config.fallbackConnectionIds || []), c.id]
+                                        : (config.fallbackConnectionIds || []).filter(
+                                            (x: string) => x !== c.id,
+                                          ),
+                                    )
+                                  }
+                                />
+                                {c.name}
+                                {config.fallbackConnectionIds?.includes(c.id)
+                                  ? ` · fallback ${config.fallbackConnectionIds.indexOf(c.id) + 1}`
+                                  : ''}
+                              </label>
+                            ))}
+                          <Field
+                            label="Response cache duration (seconds)"
+                            hint="0 disables caching. Up to one day. Encrypted and limited to this workspace; disabled when tools are assigned."
+                          >
+                            <input
+                              type="number"
+                              min="0"
+                              max="86400"
+                              disabled={!editable}
+                              value={config.cacheTtlSeconds || 0}
+                              onChange={(e) =>
+                                updateConfig('cacheTtlSeconds', Number(e.target.value))
+                              }
+                            />
+                          </Field>
+                        </details>
                         <Field label="Model override">
                           <input
                             disabled={!editable}
@@ -1085,6 +1182,79 @@ function BuilderInner(p: PageProps & { workflowId: string }) {
                             onChange={(e) => updateConfig('topK', Number(e.target.value))}
                           />
                         </Field>
+                        <JsonField
+                          key={`${node.id}-retrieval`}
+                          label="Retrieval controls"
+                          value={config.retrievalOptions || {}}
+                          onChange={(v) => updateConfig('retrievalOptions', v)}
+                          hint='Use metadata: {"team":"support"}, sourceIds, nameContains, maxPerSource, minScore (semantic or reranked), rerankConnectionId and rerankModel.'
+                        />
+                      </>
+                    )}
+                    {kind === 'guardrail' && (
+                      <>
+                        <Field label="Maximum characters">
+                          <input
+                            type="number"
+                            min="1"
+                            max="1000000"
+                            disabled={!editable}
+                            value={config.maxChars ?? 100000}
+                            onChange={(e) => updateConfig('maxChars', Number(e.target.value))}
+                          />
+                        </Field>
+                        <Field
+                          label="Restricted phrases"
+                          hint="One phrase per line. Matching ignores case and fails the run before downstream actions."
+                        >
+                          <textarea
+                            rows={4}
+                            disabled={!editable}
+                            value={(config.blockedTerms || []).join('\n')}
+                            onChange={(e) =>
+                              updateConfig(
+                                'blockedTerms',
+                                e.target.value.split('\n').filter((s: string) => s.trim()),
+                              )
+                            }
+                          />
+                        </Field>
+                        <label className="checkbox">
+                          <input
+                            type="checkbox"
+                            disabled={!editable}
+                            checked={!!config.redactEmails}
+                            onChange={(e) => updateConfig('redactEmails', e.target.checked)}
+                          />
+                          Redact email addresses
+                        </label>
+                        <Field
+                          label="Redact exact phrases"
+                          hint="One case-sensitive phrase per line."
+                        >
+                          <textarea
+                            rows={3}
+                            disabled={!editable}
+                            value={(config.redactTerms || []).join('\n')}
+                            onChange={(e) =>
+                              updateConfig(
+                                'redactTerms',
+                                e.target.value.split('\n').filter((s: string) => s.trim()),
+                              )
+                            }
+                          />
+                        </Field>
+                        <JsonField
+                          key={`${node.id}-policy-schema`}
+                          label="Payload JSON schema"
+                          value={config.schema || {}}
+                          onChange={(v) => updateConfig('schema', v)}
+                        />
+                        <p className="muted">
+                          Rules apply to this step’s input. Place before models or actions to
+                          protect them, or after generated output to review it. Run history retains
+                          the original input.
+                        </p>
                       </>
                     )}
                     {kind === 'tool' && (
@@ -1482,9 +1652,16 @@ function BuilderInner(p: PageProps & { workflowId: string }) {
       )}
       {showRun && (
         <Modal
-          title="Give your team a task"
-          subtitle="Saved graph connections define the execution order and specialist handoffs."
-          onClose={() => setShowRun(false)}
+          title={testingNode ? 'Test this component' : 'Give your team a task'}
+          subtitle={
+            testingNode
+              ? 'Runs this saved component with your payload. Assigned tools and child workflows execute normally.'
+              : 'Saved graph connections define the execution order and specialist handoffs.'
+          }
+          onClose={() => {
+            setShowRun(false);
+            setTestingNode('');
+          }}
         >
           <form
             onSubmit={(e) => {
@@ -1691,6 +1868,9 @@ function BuilderInner(p: PageProps & { workflowId: string }) {
                       setSettings(v.graph.settings || {});
                       markDirty();
                       setVersions(null);
+                      requestAnimationFrame(() =>
+                        updateNodeInternals(v.graph.nodes.map((n: Node) => n.id)),
+                      );
                       p.notify(`Version ${v.revision} restored to the draft`);
                     }}
                   >

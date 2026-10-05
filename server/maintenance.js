@@ -2,12 +2,22 @@ import { all, one, exec, decode, transaction } from './db.js';
 import { createRun } from './engine.js';
 import { recover } from './engine.js';
 import { pumpEvaluations } from './evaluations.js';
+import { nextSchedule } from './schedules.js';
+import { purgeHistory } from './retention.js';
 let last = 0;
+let lastRetention = 0;
 export function maintenance() {
   if (Date.now() - last < 500) return;
   last = Date.now();
   pumpEvaluations();
   recover();
+  if (Date.now() - lastRetention > 60000) {
+    lastRetention = Date.now();
+    for (const workspace of all(
+      "SELECT id FROM workspaces WHERE CAST(json_extract(settings,'$.historyRetentionDays') AS INTEGER)>0",
+    ))
+      purgeHistory(workspace.id);
+  }
   for (const schedule of all(
     'SELECT * FROM schedules WHERE enabled=1 AND next_at<=? LIMIT 20',
     Date.now(),
@@ -16,7 +26,7 @@ export function maintenance() {
       transaction(() => {
         const claimed = exec(
           'UPDATE schedules SET next_at=? WHERE id=? AND next_at=? AND enabled=1',
-          Date.now() + schedule.interval_minutes * 60000,
+          nextSchedule(schedule),
           schedule.id,
           schedule.next_at,
         );

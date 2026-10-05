@@ -724,6 +724,8 @@ export function Knowledge(p: PageProps) {
     [results, setResults] = useState<any[]>([]),
     [busy, setBusy] = useState(false),
     [website, setWebsite] = useState(false);
+  const [retrievalOptions, setRetrievalOptions] = useState<any>({});
+  const [metadataSource, setMetadataSource] = useState<any>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const loadSources = useCallback(() => {
     if (selected)
@@ -894,6 +896,16 @@ export function Knowledge(p: PageProps) {
                       <Badge status={s.status} />
                       <Button
                         variant="icon"
+                        title="Edit source metadata"
+                        disabled={!canEdit(p.role)}
+                        onClick={() =>
+                          setMetadataSource({ ...s, metadata: JSON.parse(s.metadata || '{}') })
+                        }
+                      >
+                        <Settings size={15} />
+                      </Button>
+                      <Button
+                        variant="icon"
                         title="Reindex source"
                         disabled={!canEdit(p.role)}
                         onClick={async () => {
@@ -936,6 +948,7 @@ export function Knowledge(p: PageProps) {
                     const r = await api(`${p.base}/collections/${selected}/retrieve`, {
                       query,
                       topK: 4,
+                      options: retrievalOptions,
                     });
                     setResults(r.sources);
                     if (!r.sources.length) p.notify('No matching passages found');
@@ -955,6 +968,15 @@ export function Knowledge(p: PageProps) {
                   <ArrowRight size={15} />
                 </Button>
               </form>
+              <details>
+                <summary>Retrieval controls</summary>
+                <JsonField
+                  label="Filters & reranking"
+                  value={retrievalOptions}
+                  onChange={setRetrievalOptions}
+                  hint='Use metadata: {"team":"support"}, sourceIds, nameContains, maxPerSource, minScore, rerankConnectionId and rerankModel. Reranking calls the connection’s /rerank endpoint.'
+                />
+              </details>
               {results.map((r, i) => (
                 <div className="retrieval-result" key={i}>
                   <span className="source-citation">{r.citation}</span>
@@ -1022,6 +1044,35 @@ export function Knowledge(p: PageProps) {
               </Button>
             </div>
           </form>
+        </Modal>
+      )}
+      {metadataSource && (
+        <Modal title={`Metadata · ${metadataSource.name}`} onClose={() => setMetadataSource(null)}>
+          <JsonField
+            label="Document metadata"
+            value={metadataSource.metadata}
+            onChange={(v) => setMetadataSource({ ...metadataSource, metadata: v })}
+            hint='Up to 20 fields with string, number, or boolean values. For example {"team":"support","year":2026}.'
+          />
+          <Button
+            variant="primary"
+            onClick={async () => {
+              try {
+                await api(
+                  `${p.base}/sources/${metadataSource.id}/metadata`,
+                  { metadata: metadataSource.metadata },
+                  'PUT',
+                );
+                setMetadataSource(null);
+                loadSources();
+                p.notify('Metadata saved');
+              } catch (e) {
+                p.notify((e as Error).message, true);
+              }
+            }}
+          >
+            Save metadata
+          </Button>
         </Modal>
       )}
       {website && (

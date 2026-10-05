@@ -50,3 +50,15 @@ The scheduler supports multiple local processes sharing SQLite WAL. Workers atom
 `evaluations.js` freezes dataset and workflow revisions, enqueues real runs, persists judge runs, grades outcomes and includes execution/judge usage. Maintenance uses a separate evaluation lease. `platform.js` exposes scoped datasets, prompts, evaluations, schedules, reviews and operations metrics. Prompt versions are copied into instructions rather than dynamically referenced.
 
 `security.js` handles TOTP MFA/recovery codes, password/session invalidation, SMTP recovery and OIDC. Authenticator keys use the vault; recovery links/codes and challenges are hashed; PKCE verifiers are encrypted. OIDC rejects state/nonce mismatches, unverified emails and invalid signatures/claims. Password accounts require existing credentials rather than implicit same-email linking. Organization admission is controlled by the identity provider and optional domain policy.
+
+## Runtime controls and application clients
+
+`guardrails.js` applies transparent payload rules and recursive redaction. These operate on one step's data, not on every stored trace or original-task reference. `providers.js` resolves all fallback connections within the workspace before execution, changes models to each fallback's default, and refuses fallback after streaming starts. Cache keys cover message content, generation settings and connection/credential identity; response payloads use the vault and expire within one day. Tool-enabled requests are not cached.
+
+`retrieval-controls.js` validates exact metadata and source filters before binding SQL parameters, then optionally calls a workspace-scoped Cohere-compatible reranker. Semantic thresholds use cosine relevance rather than raw FTS/fusion scores; reranked thresholds use reranker relevance. Per-source caps prevent a long document occupying every returned passage.
+
+Tool approvals precede action-ledger insertion. `tool_approvals` stores reviewed arguments and their hash. Agent step checkpoints freeze messages, model-selected calls, round and retrieved evidence. Approval queues the step again; it resumes that checkpoint, reuses completed tool results, and never asks the model to choose the reviewed action again. Rejected actions do not execute. Waiting child-workflow steps cannot be approved as if they were human checkpoints. Successful steps clear transient checkpoint payloads.
+
+`mcp-server.js` creates a stateless official SDK server per authenticated POST. Application tokens restrict invoke and status tools to the publication and its own runs. MCP, SDKs and CLI share the same persistent application execution path and rate limits. They do not expose workspace credentials or grant approval authority.
+
+`schedules.js` computes the next interval/calendar occurrence; maintenance claims the due time and inserts the run in one transaction. `retention.js` deletes expired terminal runs in bounded transactions while recursively protecting active/evaluation trees. Retention defaults to zero. Artifacts and audit are separate datasets and remain available.

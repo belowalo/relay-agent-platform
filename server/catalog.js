@@ -78,6 +78,12 @@ export const nodeCatalog = [
     description: 'Map fields, select a path, or format a template.',
   },
   {
+    kind: 'guardrail',
+    group: 'Data',
+    name: 'Policy guardrail',
+    description: 'Validate payloads, block restricted phrases, and redact sensitive text.',
+  },
+  {
     kind: 'subworkflow',
     group: 'Data',
     name: 'Subworkflow',

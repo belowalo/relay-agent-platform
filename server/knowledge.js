@@ -2,6 +2,7 @@ import { all, one, exec, id, now, transaction } from './db.js';
 import { safeFetch, responseText } from './network.js';
 import { workerId } from './leases.js';
 import { embed, embeddingIdentity, similarity } from './embeddings.js';
+import { retrievalOptions, sourceFilter, rerank } from './retrieval-controls.js';
 export function readable(html) {
   return html
     .replace(/<(script|style|nav)[\s\S]*?<\/\1>/gi, ' ')
@@ -233,7 +234,7 @@ export async function crawlWebsite(wid, collectionId, start, maxPages = 1) {
     throw new Error('No new permitted pages were found; existing sources can be reindexed');
   return ids;
 }
-export async function retrieve(wid, collectionId, query, topK = 4) {
+export async function retrieve(wid, collectionId, query, topK = 4, options = {}) {
   const collection = one(
     'SELECT * FROM collections WHERE id=? AND workspace_id=?',
     collectionId,
@@ -242,6 +243,10 @@ export async function retrieve(wid, collectionId, query, topK = 4) {
   if (!collection)
     throw new Error('Knowledge collection is outside this workspace or does not exist');
   const config = JSON.parse(collection.config);
+  options = retrievalOptions.parse(options || {});
+  if (options.minScore != null && config.retrieval === 'lexical' && !options.rerankConnectionId)
+    throw new Error('Score thresholds require semantic retrieval or a rerank model');
+  const filter = sourceFilter(options);
   const count = Math.max(1, Math.min(20, Number(topK) || 4));
   const terms =
     String(query)
@@ -250,25 +255,37 @@ export async function retrieve(wid, collectionId, query, topK = 4) {
   if (!terms.length) return [];
   const match = terms.map((t) => '"' + t.replaceAll('"', '') + '"').join(' OR ');
   const lexical = all(
-    "SELECT c.id AS chunkId,c.content,c.ordinal,s.id AS sourceId,s.name AS source,s.url,bm25(chunk_search) AS score FROM chunk_search JOIN chunks c ON c.id=chunk_search.chunk_id JOIN sources s ON s.id=c.source_id WHERE chunk_search MATCH ? AND chunk_search.workspace_id=? AND chunk_search.collection_id=? AND s.status='ready' ORDER BY score LIMIT ?",
+    "SELECT c.id AS chunkId,c.content,c.ordinal,s.id AS sourceId,s.name AS source,s.url,s.metadata,bm25(chunk_search) AS score FROM chunk_search JOIN chunks c ON c.id=chunk_search.chunk_id JOIN sources s ON s.id=c.source_id WHERE chunk_search MATCH ? AND chunk_search.workspace_id=? AND chunk_search.collection_id=? AND s.status='ready'" +
+      filter.sql +
+      ' ORDER BY score LIMIT ?',
     match,
     wid,
     collectionId,
+    ...filter.args,
     count * 4,
   );
   let results = lexical;
   if (['semantic', 'hybrid'].includes(config.retrieval)) {
     const [vector] = await embed(wid, [String(query).slice(0, 8000)], config);
     const semantic = all(
-      "SELECT c.id AS chunkId,c.content,c.ordinal,s.id AS sourceId,s.name AS source,s.url,e.vector FROM embeddings e JOIN chunks c ON c.id=e.chunk_id JOIN sources s ON s.id=c.source_id WHERE e.workspace_id=? AND e.collection_id=? AND e.model=? AND s.status='ready'",
+      "SELECT c.id AS chunkId,c.content,c.ordinal,s.id AS sourceId,s.name AS source,s.url,s.metadata,e.vector FROM embeddings e JOIN chunks c ON c.id=e.chunk_id JOIN sources s ON s.id=c.source_id WHERE e.workspace_id=? AND e.collection_id=? AND e.model=? AND s.status='ready'" +
+        filter.sql,
       wid,
       collectionId,
       embeddingIdentity(config),
+      ...filter.args,
     )
       .map(({ vector: stored, ...row }) => ({
         ...row,
         score: similarity(vector, JSON.parse(stored)),
+        similarity: similarity(vector, JSON.parse(stored)),
       }))
+      .filter(
+        (r) =>
+          options.rerankConnectionId ||
+          options.minScore == null ||
+          r.similarity >= options.minScore,
+      )
       .sort((a, b) => b.score - a.score)
       .slice(0, count * 4);
     if (config.retrieval === 'semantic') results = semantic;
@@ -280,10 +297,23 @@ export async function retrieve(wid, collectionId, query, topK = 4) {
           ranks.set(row.chunkId, { ...row, score: (prior?.score || 0) + 1 / (60 + i + 1) });
         });
       results = [...ranks.values()].sort((a, b) => b.score - a.score);
+      if (options.minScore != null && !options.rerankConnectionId)
+        results = results.filter((r) => r.similarity != null && r.similarity >= options.minScore);
     }
   }
+  results = await rerank(wid, String(query), results, options);
+  if (options.rerankConnectionId && options.minScore != null)
+    results = results.filter((r) => r.score >= options.minScore);
+  const perSource = new Map();
+  results = results.filter((r) => {
+    const prior = perSource.get(r.sourceId) || 0;
+    if (options.maxPerSource && prior >= options.maxPerSource) return false;
+    perSource.set(r.sourceId, prior + 1);
+    return true;
+  });
   return results.slice(0, count).map((r) => ({
     ...r,
+    metadata: JSON.parse(r.metadata || '{}'),
     retrieval: config.retrieval || 'lexical',
     citation: `[${r.source}, chunk ${r.ordinal + 1}]`,
   }));

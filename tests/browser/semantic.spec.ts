@@ -36,4 +36,21 @@ test('local semantic search retrieves a paraphrase that keyword search misses', 
   await page.getByRole('button', { name: 'Retrieve', exact: true }).click();
   await expect(page.locator('.retrieval-result').first()).toContainText('physician');
   await page.screenshot({ path: 'test-results/semantic-retrieval.png', fullPage: true });
+  await page
+    .locator('.source-list > div')
+    .filter({ hasText: 'medical.txt' })
+    .getByTitle('Edit source metadata')
+    .click();
+  await page.getByLabel('Document metadata').fill('{"category":"health"}');
+  await page.getByRole('button', { name: 'Save metadata', exact: true }).click();
+  await page.getByText('Retrieval controls', { exact: true }).click();
+  await page
+    .getByLabel('Filters & reranking')
+    .fill('{"metadata":{"category":"health"},"maxPerSource":1}');
+  await page.getByRole('button', { name: 'Retrieve', exact: true }).click();
+  await expect(page.locator('.retrieval-result')).toHaveCount(1);
+  await expect(page.locator('.retrieval-result')).toContainText('medical.txt');
+  await page.getByLabel('Filters & reranking').fill('{"metadata":{"category":"engineering"}}');
+  await page.getByRole('button', { name: 'Retrieve', exact: true }).click();
+  await expect(page.locator('.retrieval-result')).toHaveCount(0);
 });
