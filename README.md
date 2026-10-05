@@ -1,5 +1,7 @@
 # Relay
 
+The production upgrade teams start from the frozen `codex/production-foundation` branch. Read the [foundation handoff](docs/production/HANDOFF.md), [architecture](docs/production/ARCHITECTURE.md), [shared contracts](docs/production/CONTRACTS.md), [team ownership](docs/production/OWNERSHIP.md), and [release gates](docs/production/ACCEPTANCE.md). This foundation is a buildable integration starting point; production domain/runtime conversion and release qualification remain assigned team work.
+
 A persistent local platform for building, running, publishing and evaluating teams of AI agents. Version 0.3 adds policy guardrails, approval gates for agent-selected tools, model fallback and encrypted caching, filtered/reranked retrieval, MCP publication, JavaScript/Python clients, a CLI, calendar schedules, and opt-in history retention.
 
 The core features run locally. Full commercial parity is not claimed: multi-host infrastructure, a broad catalog of native vendor connectors, large-corpus vector storage and production load qualification remain gaps. An authorized OpenAI connection returned exhausted API credits; successful hosted-model reasoning still needs a funded or free-tier provider connection. Development preview is deterministic and labeled. Direct tool/retrieval nodes perform real actions even in preview.
