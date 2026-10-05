@@ -224,6 +224,18 @@ try {
     for (const kind of ['api', 'provider', 'tool', 'retrieval'])
       assert.ok(records.some((record) => record.kind === kind && record.traceId === job.traceId));
     report.traceCorrelation = { apiJobProviderToolRetrievalSharedTrace: true };
+    await fs.writeFile(
+      path.join(reportDir, 'traces.json'),
+      JSON.stringify(
+        {
+          commit: report.releaseCommit,
+          sharedTrace: records.filter((record) => record.traceId === job.traceId),
+          collectorAcceptedProviderAndRetrieval: true,
+        },
+        null,
+        2,
+      ),
+    );
     await fs.writeFile(path.join(reportDir, 'observability.log'), sanitize(logs));
   });
   await drill('provider-outage-and-quota', async () => {
