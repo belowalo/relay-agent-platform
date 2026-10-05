@@ -11,6 +11,7 @@ import {
   json,
   safeCode,
   publicRow,
+  bestEffortTelemetry,
 } from '../server/runtime/core.js';
 import { readImport } from '../server/runtime/import.js';
 import { sqliteFixture, node, edge, linear } from './helpers/runtime-fixtures.js';
@@ -35,6 +36,19 @@ test('public rows decode JSON once, preserve payload keys and expose stable came
   assert.deepEqual(row.input, { user_key: 'value' });
   assert.equal(row.output, 'plain string');
   assert.equal(row.revision, 2);
+});
+test('telemetry failures never propagate into business execution', async () => {
+  const telemetry = bestEffortTelemetry({
+    event() {
+      throw new Error('exporter failed');
+    },
+    async timing() {
+      throw new Error('exporter failed');
+    },
+  });
+  assert.doesNotThrow(() => telemetry.event('fixture', {}));
+  assert.doesNotThrow(() => telemetry.timing('fixture', 1, {}));
+  await new Promise((r) => setImmediate(r));
 });
 test('limits reject unbounded resources and graph cycles', () => {
   assert.throws(() => limitsFor({ rounds: 13 }), /INVALID_LIMITS/);

@@ -9,7 +9,7 @@ import { createRuntimeWorker } from './worker.js';
 import { createDispatcher } from './dispatcher.js';
 import { createRuntimeScheduler } from './scheduler.js';
 import { createRuntimeApi } from './api.js';
-import { fail } from './core.js';
+import { fail, bestEffortTelemetry } from './core.js';
 export async function startProduction({
   config = loadConfig(),
   ports,
@@ -23,6 +23,7 @@ export async function startProduction({
     ports = await module.createRuntimePorts({ config });
   }
   if (!ports.authenticate || !ports.authorize || !ports.usage) fail('MISSING_RUNTIME_PORTS');
+  ports = { ...ports, telemetry: bestEffortTelemetry(ports.telemetry) };
   const database = createPostgresDatabase(config),
     queue = createJobQueue(config, { onError: (code) => ports.telemetry?.event(code, {}) });
   let discovery,

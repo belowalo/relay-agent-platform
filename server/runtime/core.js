@@ -5,6 +5,17 @@ export const json = (value) => JSON.stringify(value ?? null);
 export const decode = (value) => (value == null ? null : JSON.parse(value));
 export const uuid = () => crypto.randomUUID();
 export const instant = () => new Date().toISOString();
+export function bestEffortTelemetry(port) {
+  const call = (method, ...args) => {
+    try {
+      Promise.resolve(port?.[method]?.(...args)).catch(() => {});
+    } catch {}
+  };
+  return {
+    event: (...args) => call('event', ...args),
+    timing: (...args) => call('timing', ...args),
+  };
+}
 // Keep legacy field aliases while exposing v1 camelCase row fields. JSON payload
 // keys are user data and are never renamed; bigint counters become safe numbers.
 export function publicRow(row) {

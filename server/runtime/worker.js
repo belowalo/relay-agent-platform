@@ -12,6 +12,7 @@ import {
   getPath,
   RuntimeError,
   safeCode,
+  bestEffortTelemetry,
 } from './core.js';
 const WAIT = Symbol('waiting');
 const stringify = (value) => (typeof value === 'string' ? value : json(value));
@@ -49,6 +50,7 @@ export function createRuntimeWorker({
   if (!Number.isInteger(nodeConcurrency) || nodeConcurrency < 1 || nodeConcurrency > 128)
     fail('INVALID_LIMITS');
   const active = new Map();
+  telemetry = bestEffortTelemetry(telemetry);
   let activeNodes = 0;
   async function nodeSlot(signal, invoke) {
     while (activeNodes >= nodeConcurrency) {
