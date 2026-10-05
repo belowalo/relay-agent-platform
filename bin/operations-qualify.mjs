@@ -400,7 +400,7 @@ try {
     assert.equal(report.restoredState.blobRestored, true);
     report.recoveryTimeMs = Date.now() - started;
     report.recoveryPoint =
-      'Quiesced snapshot; scheduled target <=1h only while every hourly backup succeeds and is copied off-host.';
+      'Quiesced snapshot; scheduled target <=1h only while every 45-minute backup completes and its off-host copy is independently verified within 15 minutes.';
   });
   await drill('image-rollback', async () => {
     await run('docker', ['tag', 'relay-operations:local', 'relay-operations:rollback']);

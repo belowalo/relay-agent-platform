@@ -12,14 +12,14 @@ npm run test:operations
 npm run operations:qualify
 ```
 
-The qualification harness builds application, backup and proxy images, starts actual pgvector/PostgreSQL, authenticated Redis, RustFS object storage, Caddy TLS, Prometheus, Alertmanager and an OTLP collector in a unique Compose project. It seeds and restores a synthetic vector, database record, encrypted credential and blob. It measures restoration time and tests faults. `OPERATIONS_PORT`, `OPERATIONS_TLS_PORT`, `OPERATIONS_RESULTS`, and `OPERATIONS_KEEP=true` are test interfaces. No live database or production namespace is used. Reports always label `runtimeIntegrated:false`.
+The qualification harness builds application, database, backup and proxy images, starts actual pgvector/PostgreSQL, authenticated Redis, RustFS object storage, Caddy TLS, Prometheus, Alertmanager and an OTLP collector in a unique Compose project. It seeds and restores a synthetic vector, database record, encrypted credential and blob. It measures restoration time and tests faults. `OPERATIONS_PORT`, `OPERATIONS_TLS_PORT`, `OPERATIONS_RESULTS`, and `OPERATIONS_KEEP=true` are test interfaces. No live database or production namespace is used. Reports always label `runtimeIntegrated:false`.
 
 Production deployment, after integration gates pass:
 
 ```sh
 node bin/operations-init.mjs /etc/relay/private
 # Review /etc/relay/private/production.env; set domain and the correct HTTPS origin/port.
-docker compose --env-file /etc/relay/private/production.env -f deploy/compose.production.yaml build api backup proxy
+docker compose --env-file /etc/relay/private/production.env -f deploy/compose.production.yaml build api database backup proxy
 docker compose --env-file /etc/relay/private/production.env -f deploy/compose.production.yaml up -d --wait database queue storage
 docker compose --env-file /etc/relay/private/production.env -f deploy/compose.production.yaml run --rm migrate
 # Initialize the S3 bucket and bucket-scoped application identity using the selected S3 service administration tooling.
