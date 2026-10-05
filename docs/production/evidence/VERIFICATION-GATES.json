@@ -1,0 +1,295 @@
+{
+  "foundationCommit": "76649286b51b39924261a876878efebf5e02f020",
+  "integratedReleaseCommit": null,
+  "verdict": "No final release verdict; coordinator qualification required",
+  "gates": [
+    {
+      "id": "F01",
+      "status": "blocked",
+      "area": "foundation",
+      "commands": ["npm run test:foundation", "npm run test:services"],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "F02",
+      "status": "blocked",
+      "area": "foundation",
+      "commands": ["npm run test:foundation", "npm run test:services"],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "F03",
+      "status": "blocked",
+      "area": "foundation",
+      "commands": ["npm run test:foundation", "npm run test:services"],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "D01",
+      "status": "blocked",
+      "area": "runtime",
+      "commands": ["npm test", "npm run test:failure", "npm run test:acceptance:services"],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "D02",
+      "status": "blocked",
+      "area": "runtime",
+      "commands": ["npm test", "npm run test:failure", "npm run test:acceptance:services"],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "R01",
+      "status": "blocked",
+      "area": "runtime",
+      "commands": ["npm test", "npm run test:failure", "npm run test:acceptance:services"],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "R02",
+      "status": "blocked",
+      "area": "runtime",
+      "commands": ["npm test", "npm run test:failure", "npm run test:acceptance:services"],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "R03",
+      "status": "blocked",
+      "area": "runtime",
+      "commands": ["npm test", "npm run test:failure", "npm run test:acceptance:services"],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "C01",
+      "status": "blocked",
+      "area": "connectors",
+      "commands": ["npm test", "authorized native live connector samples"],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "K01",
+      "status": "blocked",
+      "area": "knowledge",
+      "commands": [
+        "npm test",
+        "npm run test:acceptance",
+        "npm run test:acceptance:live",
+        "npm run acceptance:quality:score",
+        "integrated knowledge/extraction suite"
+      ],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "K02",
+      "status": "blocked",
+      "area": "knowledge",
+      "commands": [
+        "npm test",
+        "npm run test:acceptance",
+        "npm run test:acceptance:live",
+        "npm run acceptance:quality:score",
+        "integrated knowledge/extraction suite"
+      ],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "K03",
+      "status": "blocked",
+      "area": "knowledge",
+      "commands": [
+        "npm test",
+        "npm run test:acceptance",
+        "npm run test:acceptance:live",
+        "npm run acceptance:quality:score",
+        "integrated knowledge/extraction suite"
+      ],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "K04",
+      "status": "blocked",
+      "area": "knowledge",
+      "commands": [
+        "npm test",
+        "npm run test:acceptance",
+        "npm run test:acceptance:live",
+        "npm run acceptance:quality:score",
+        "integrated knowledge/extraction suite"
+      ],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "S01",
+      "status": "blocked",
+      "area": "security",
+      "commands": [
+        "npm test",
+        "npm run test:acceptance",
+        "npm run test:acceptance:services",
+        "integrated security suite"
+      ],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "S02",
+      "status": "blocked",
+      "area": "security",
+      "commands": [
+        "npm test",
+        "npm run test:acceptance",
+        "npm run test:acceptance:services",
+        "integrated security suite"
+      ],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "S03",
+      "status": "blocked",
+      "area": "security",
+      "commands": [
+        "npm test",
+        "npm run test:acceptance",
+        "npm run test:acceptance:services",
+        "integrated security suite"
+      ],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "U01",
+      "status": "blocked",
+      "area": "security",
+      "commands": [
+        "npm test",
+        "npm run test:acceptance",
+        "npm run test:acceptance:services",
+        "integrated security suite"
+      ],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "O01",
+      "status": "blocked",
+      "area": "operations",
+      "commands": [
+        "npm run test:acceptance:services",
+        "npm run test:operations (after operations integration)",
+        "npm run operations:qualify (after operations integration)"
+      ],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "O02",
+      "status": "blocked",
+      "area": "operations",
+      "commands": [
+        "npm run test:acceptance:services",
+        "npm run test:operations (after operations integration)",
+        "npm run operations:qualify (after operations integration)"
+      ],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "O03",
+      "status": "blocked",
+      "area": "operations",
+      "commands": [
+        "npm run test:acceptance:services",
+        "npm run test:operations (after operations integration)",
+        "npm run operations:qualify (after operations integration)"
+      ],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "P01",
+      "status": "blocked",
+      "area": "performance",
+      "commands": ["npm run test:load", "npm run test:soak"],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "P02",
+      "status": "blocked",
+      "area": "performance",
+      "commands": ["npm run test:load", "npm run test:soak"],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "P03",
+      "status": "blocked",
+      "area": "performance",
+      "commands": ["npm run test:load", "npm run test:soak"],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "P04",
+      "status": "blocked",
+      "area": "performance",
+      "commands": ["npm run test:load", "npm run test:soak"],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "J01",
+      "status": "blocked",
+      "area": "business",
+      "commands": [
+        "npm run test:acceptance",
+        "npm run test:browser",
+        "authorized live business samples"
+      ],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "J02",
+      "status": "blocked",
+      "area": "business",
+      "commands": [
+        "npm run test:acceptance",
+        "npm run test:browser",
+        "authorized live business samples"
+      ],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "L01",
+      "status": "blocked",
+      "area": "coordinator",
+      "commands": ["complete exact-commit merged CI and rehearsal"],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    },
+    {
+      "id": "L02",
+      "status": "blocked",
+      "area": "coordinator",
+      "commands": ["complete exact-commit merged CI and rehearsal"],
+      "reason": "Final integrated commit/topology/live evidence is not available on this verification branch",
+      "localEvidence": "See VERIFICATION.md; local fixture checks do not pass this release gate"
+    }
+  ]
+}

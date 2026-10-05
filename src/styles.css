@@ -3569,6 +3569,61 @@ tbody tr[tabindex]:hover {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   border-radius: 8px;
 }
+.connection-result,
+.run-diagnostics {
+  padding: 14px;
+  margin: 12px 0;
+  overflow-wrap: anywhere;
+}
+.connection-result.error-banner {
+  display: block;
+}
+.citation-details dl,
+.run-diagnostics dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 16px;
+}
+.citation-details dd,
+.run-diagnostics dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.source-list progress {
+  display: block;
+  width: min(200px, 100%);
+  margin-top: 8px;
+  accent-color: var(--accent);
+}
+:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 3px;
+}
+@media (max-width: 720px) {
+  .source-list > div,
+  .run-heading,
+  .run-stats {
+    flex-wrap: wrap;
+  }
+  .source-list .grow {
+    min-width: 120px;
+    overflow-wrap: anywhere;
+  }
+  .source-list .btn,
+  .sidebar nav button,
+  .btn {
+    min-height: 36px;
+  }
+  .citation-details dl,
+  .run-diagnostics dl {
+    grid-template-columns: 1fr;
+  }
+  .modal,
+  .page-main,
+  .main-shell {
+    min-width: 0;
+  }
+}
 @media (max-width: 1100px) {
   .quality-layout {
     grid-template-columns: 260px minmax(0, 1fr);

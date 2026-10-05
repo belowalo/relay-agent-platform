@@ -1,0 +1,225 @@
+{
+  "evidenceStage": "pre-commit local smoke, not final production qualification",
+  "commit": "76649286b51b39924261a876878efebf5e02f020",
+  "worktreeDirty": true,
+  "startedAt": "2026-10-05T07:58:08.822Z",
+  "finishedAt": "2026-10-05T07:58:36.373Z",
+  "hardware": {
+    "os": "Windows_NT",
+    "release": "10.0.26200",
+    "arch": "x64",
+    "logicalCpus": 8,
+    "cpuModel": "AMD Ryzen 7 7800X3D 8-Core Processor           ",
+    "totalRamBytes": 33397133312,
+    "node": "v22.16.0"
+  },
+  "topology": {
+    "api": 1,
+    "embeddedWorkers": 1,
+    "workerCapacity": 4,
+    "database": "SQLite WAL",
+    "storage": "local disposable directory",
+    "qualification": false
+  },
+  "profile": {
+    "durationSeconds": 20,
+    "warmupSeconds": 5,
+    "workspaces": 1,
+    "usersPerWorkspace": 1,
+    "documents": 20,
+    "chunksPerDocument": 10,
+    "concurrency": 4,
+    "apiRps": 10,
+    "retrievalRps": 2,
+    "ingestionEverySeconds": 5,
+    "faultEveryRuns": 10
+  },
+  "thresholds": {
+    "apiP95Ms": 300,
+    "retrievalP95Ms": 1000,
+    "dispatchP95Ms": 2000,
+    "unexpectedErrorRateExclusive": 0.01,
+    "minimumRateFraction": 0.95,
+    "stableMemoryGrowthExclusive": 0.1,
+    "maximumQueuedRuns": 50,
+    "remainingActiveRuns": 0,
+    "recoveryMs": 15000
+  },
+  "corpus": {
+    "documents": 20,
+    "chunks": 320,
+    "generatedBytes": 111380,
+    "retrieval": "keyword/lexical; semantic capacity requires separate integrated run"
+  },
+  "counters": {
+    "api": {
+      "attempted": 200,
+      "unexpected": 0,
+      "missed": 0
+    },
+    "retrieval": {
+      "attempted": 41,
+      "unexpected": 0,
+      "missed": 0
+    },
+    "runs": {
+      "attempted": 214,
+      "unexpected": 0,
+      "expectedFaults": 21,
+      "lost": 0
+    },
+    "ingestion": {
+      "attempted": 4,
+      "unexpected": 0
+    }
+  },
+  "percentilesMs": {
+    "api": {
+      "count": 200,
+      "p50": 3.0102999999999156,
+      "p95": 19.251500000002125,
+      "p99": 24.35699999999997,
+      "max": 64.73799999999937
+    },
+    "retrieval": {
+      "count": 41,
+      "p50": 4.387399999999616,
+      "p95": 16.424300000002404,
+      "p99": 20.004300000000512,
+      "max": 20.004300000000512
+    },
+    "queue": {
+      "count": 214,
+      "p50": 65,
+      "p95": 72,
+      "p99": 74,
+      "max": 77
+    },
+    "run": {
+      "count": 214,
+      "p50": 387.41270000000077,
+      "p95": 398.45330000000104,
+      "p99": 436.1765999999998,
+      "max": 443.90419999999995
+    },
+    "provider": {
+      "count": 214,
+      "p50": 65.66229999999996,
+      "p95": 71.13110000000052,
+      "p99": 74.3056000000006,
+      "max": 76.62710000000152
+    },
+    "applicationResidual": {
+      "count": 214,
+      "p50": 238.1214,
+      "p95": 245.64819999999963,
+      "p99": 253.65020000000004,
+      "max": 256.5496999999996
+    },
+    "ingestion": {
+      "count": 4,
+      "p50": 7.396300000000338,
+      "p95": 26.595900000000256,
+      "p99": 26.595900000000256,
+      "max": 26.595900000000256
+    }
+  },
+  "observedRps": {
+    "api": 10,
+    "retrieval": 2.05
+  },
+  "unexpectedErrorRates": {
+    "api": 0,
+    "retrieval": 0,
+    "runs": 0
+  },
+  "resources": [
+    {
+      "at": "2026-10-05T07:58:16.167Z",
+      "rssBytes": 130027520,
+      "cpuSeconds": 2.1875,
+      "diskBytes": 5557880
+    },
+    {
+      "at": "2026-10-05T07:58:21.066Z",
+      "rssBytes": 145952768,
+      "cpuSeconds": 3.078125,
+      "diskBytes": 5869368
+    },
+    {
+      "at": "2026-10-05T07:58:26.058Z",
+      "rssBytes": 162627584,
+      "cpuSeconds": 4.03125,
+      "diskBytes": 6172472
+    },
+    {
+      "at": "2026-10-05T07:58:31.073Z",
+      "rssBytes": 177352704,
+      "cpuSeconds": 4.890625,
+      "diskBytes": 6528824
+    },
+    {
+      "at": "2026-10-05T07:58:36.340Z",
+      "rssBytes": 193228800,
+      "cpuSeconds": 5.90625,
+      "diskBytes": 6803256
+    }
+  ],
+  "queueSeries": [
+    {
+      "at": "2026-10-05T07:58:16.179Z",
+      "states": {
+        "completed": 49,
+        "failed": 6,
+        "queued": 1,
+        "running": 3
+      }
+    },
+    {
+      "at": "2026-10-05T07:58:21.069Z",
+      "states": {
+        "completed": 97,
+        "failed": 11,
+        "queued": 1,
+        "running": 3
+      }
+    },
+    {
+      "at": "2026-10-05T07:58:26.073Z",
+      "states": {
+        "completed": 144,
+        "failed": 17,
+        "running": 4
+      }
+    },
+    {
+      "at": "2026-10-05T07:58:31.076Z",
+      "states": {
+        "completed": 193,
+        "failed": 22,
+        "running": 4
+      }
+    },
+    {
+      "at": "2026-10-05T07:58:36.349Z",
+      "states": {
+        "completed": 242,
+        "failed": 27
+      }
+    }
+  ],
+  "remainingActive": 0,
+  "thresholdChecks": {
+    "P01": true,
+    "P02": true,
+    "P03": true,
+    "P04": null
+  },
+  "releaseGates": {
+    "P01": "blocked: target topology/workload/duration is not qualified",
+    "P02": "blocked: target topology/workload/duration is not qualified",
+    "P03": "blocked: target topology/workload/duration is not qualified",
+    "P04": "blocked: target topology/workload/duration is not qualified"
+  },
+  "modelValidation": "deterministic HTTP fixture; synthetic usage; no real reasoning claim"
+}

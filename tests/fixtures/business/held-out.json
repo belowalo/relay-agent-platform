@@ -1,0 +1,558 @@
+{
+  "version": 1,
+  "label": "Frozen synthetic held-out facts, not real-customer evidence",
+  "documents": [
+    {
+      "id": "policy-1",
+      "name": "north-policy-1.md",
+      "text": "North unit 1 travel reimbursement: maximum hotel rate is 120 CAD per night. Receipt review owner is Finance unit 1. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-2",
+      "name": "north-policy-2.md",
+      "text": "North unit 2 travel reimbursement: maximum hotel rate is 121 CAD per night. Receipt review owner is Finance unit 2. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-3",
+      "name": "north-policy-3.md",
+      "text": "North unit 3 travel reimbursement: maximum hotel rate is 122 CAD per night. Receipt review owner is Finance unit 3. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-4",
+      "name": "north-policy-4.md",
+      "text": "North unit 4 travel reimbursement: maximum hotel rate is 123 CAD per night. Receipt review owner is Finance unit 4. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-5",
+      "name": "north-policy-5.md",
+      "text": "North unit 5 travel reimbursement: maximum hotel rate is 124 CAD per night. Receipt review owner is Finance unit 5. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-6",
+      "name": "north-policy-6.md",
+      "text": "North unit 6 travel reimbursement: maximum hotel rate is 125 CAD per night. Receipt review owner is Finance unit 6. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-7",
+      "name": "north-policy-7.md",
+      "text": "North unit 7 travel reimbursement: maximum hotel rate is 126 CAD per night. Receipt review owner is Finance unit 7. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-8",
+      "name": "north-policy-8.md",
+      "text": "North unit 8 travel reimbursement: maximum hotel rate is 127 CAD per night. Receipt review owner is Finance unit 8. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-9",
+      "name": "north-policy-9.md",
+      "text": "North unit 9 travel reimbursement: maximum hotel rate is 128 CAD per night. Receipt review owner is Finance unit 9. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-10",
+      "name": "north-policy-10.md",
+      "text": "North unit 10 travel reimbursement: maximum hotel rate is 129 CAD per night. Receipt review owner is Finance unit 10. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-11",
+      "name": "north-policy-11.md",
+      "text": "North unit 11 travel reimbursement: maximum hotel rate is 130 CAD per night. Receipt review owner is Finance unit 11. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-12",
+      "name": "north-policy-12.md",
+      "text": "North unit 12 travel reimbursement: maximum hotel rate is 131 CAD per night. Receipt review owner is Finance unit 12. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-13",
+      "name": "north-policy-13.md",
+      "text": "North unit 13 travel reimbursement: maximum hotel rate is 132 CAD per night. Receipt review owner is Finance unit 13. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-14",
+      "name": "north-policy-14.md",
+      "text": "North unit 14 travel reimbursement: maximum hotel rate is 133 CAD per night. Receipt review owner is Finance unit 14. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-15",
+      "name": "north-policy-15.md",
+      "text": "North unit 15 travel reimbursement: maximum hotel rate is 134 CAD per night. Receipt review owner is Finance unit 15. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-16",
+      "name": "north-policy-16.md",
+      "text": "North unit 16 travel reimbursement: maximum hotel rate is 135 CAD per night. Receipt review owner is Finance unit 16. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-17",
+      "name": "north-policy-17.md",
+      "text": "North unit 17 travel reimbursement: maximum hotel rate is 136 CAD per night. Receipt review owner is Finance unit 17. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-18",
+      "name": "north-policy-18.md",
+      "text": "North unit 18 travel reimbursement: maximum hotel rate is 137 CAD per night. Receipt review owner is Finance unit 18. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-19",
+      "name": "north-policy-19.md",
+      "text": "North unit 19 travel reimbursement: maximum hotel rate is 138 CAD per night. Receipt review owner is Finance unit 19. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-20",
+      "name": "north-policy-20.md",
+      "text": "North unit 20 travel reimbursement: maximum hotel rate is 139 CAD per night. Receipt review owner is Finance unit 20. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-21",
+      "name": "north-policy-21.md",
+      "text": "North unit 21 travel reimbursement: maximum hotel rate is 140 CAD per night. Receipt review owner is Finance unit 21. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-22",
+      "name": "north-policy-22.md",
+      "text": "North unit 22 travel reimbursement: maximum hotel rate is 141 CAD per night. Receipt review owner is Finance unit 22. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-23",
+      "name": "north-policy-23.md",
+      "text": "North unit 23 travel reimbursement: maximum hotel rate is 142 CAD per night. Receipt review owner is Finance unit 23. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-24",
+      "name": "north-policy-24.md",
+      "text": "North unit 24 travel reimbursement: maximum hotel rate is 143 CAD per night. Receipt review owner is Finance unit 24. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-25",
+      "name": "north-policy-25.md",
+      "text": "North unit 25 travel reimbursement: maximum hotel rate is 144 CAD per night. Receipt review owner is Finance unit 25. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-26",
+      "name": "north-policy-26.md",
+      "text": "North unit 26 travel reimbursement: maximum hotel rate is 145 CAD per night. Receipt review owner is Finance unit 26. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-27",
+      "name": "north-policy-27.md",
+      "text": "North unit 27 travel reimbursement: maximum hotel rate is 146 CAD per night. Receipt review owner is Finance unit 27. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-28",
+      "name": "north-policy-28.md",
+      "text": "North unit 28 travel reimbursement: maximum hotel rate is 147 CAD per night. Receipt review owner is Finance unit 28. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-29",
+      "name": "north-policy-29.md",
+      "text": "North unit 29 travel reimbursement: maximum hotel rate is 148 CAD per night. Receipt review owner is Finance unit 29. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-30",
+      "name": "north-policy-30.md",
+      "text": "North unit 30 travel reimbursement: maximum hotel rate is 149 CAD per night. Receipt review owner is Finance unit 30. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-31",
+      "name": "north-policy-31.md",
+      "text": "North unit 31 travel reimbursement: maximum hotel rate is 150 CAD per night. Receipt review owner is Finance unit 31. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-32",
+      "name": "north-policy-32.md",
+      "text": "North unit 32 travel reimbursement: maximum hotel rate is 151 CAD per night. Receipt review owner is Finance unit 32. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-33",
+      "name": "north-policy-33.md",
+      "text": "North unit 33 travel reimbursement: maximum hotel rate is 152 CAD per night. Receipt review owner is Finance unit 33. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-34",
+      "name": "north-policy-34.md",
+      "text": "North unit 34 travel reimbursement: maximum hotel rate is 153 CAD per night. Receipt review owner is Finance unit 34. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-35",
+      "name": "north-policy-35.md",
+      "text": "North unit 35 travel reimbursement: maximum hotel rate is 154 CAD per night. Receipt review owner is Finance unit 35. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-36",
+      "name": "north-policy-36.md",
+      "text": "North unit 36 travel reimbursement: maximum hotel rate is 155 CAD per night. Receipt review owner is Finance unit 36. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-37",
+      "name": "north-policy-37.md",
+      "text": "North unit 37 travel reimbursement: maximum hotel rate is 156 CAD per night. Receipt review owner is Finance unit 37. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-38",
+      "name": "north-policy-38.md",
+      "text": "North unit 38 travel reimbursement: maximum hotel rate is 157 CAD per night. Receipt review owner is Finance unit 38. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-39",
+      "name": "north-policy-39.md",
+      "text": "North unit 39 travel reimbursement: maximum hotel rate is 158 CAD per night. Receipt review owner is Finance unit 39. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-40",
+      "name": "north-policy-40.md",
+      "text": "North unit 40 travel reimbursement: maximum hotel rate is 159 CAD per night. Receipt review owner is Finance unit 40. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-41",
+      "name": "north-policy-41.md",
+      "text": "North unit 41 travel reimbursement: maximum hotel rate is 160 CAD per night. Receipt review owner is Finance unit 41. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-42",
+      "name": "north-policy-42.md",
+      "text": "North unit 42 travel reimbursement: maximum hotel rate is 161 CAD per night. Receipt review owner is Finance unit 42. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-43",
+      "name": "north-policy-43.md",
+      "text": "North unit 43 travel reimbursement: maximum hotel rate is 162 CAD per night. Receipt review owner is Finance unit 43. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-44",
+      "name": "north-policy-44.md",
+      "text": "North unit 44 travel reimbursement: maximum hotel rate is 163 CAD per night. Receipt review owner is Finance unit 44. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-45",
+      "name": "north-policy-45.md",
+      "text": "North unit 45 travel reimbursement: maximum hotel rate is 164 CAD per night. Receipt review owner is Finance unit 45. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-46",
+      "name": "north-policy-46.md",
+      "text": "North unit 46 travel reimbursement: maximum hotel rate is 165 CAD per night. Receipt review owner is Finance unit 46. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-47",
+      "name": "north-policy-47.md",
+      "text": "North unit 47 travel reimbursement: maximum hotel rate is 166 CAD per night. Receipt review owner is Finance unit 47. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-48",
+      "name": "north-policy-48.md",
+      "text": "North unit 48 travel reimbursement: maximum hotel rate is 167 CAD per night. Receipt review owner is Finance unit 48. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-49",
+      "name": "north-policy-49.md",
+      "text": "North unit 49 travel reimbursement: maximum hotel rate is 168 CAD per night. Receipt review owner is Finance unit 49. This synthetic policy is current for October 2026."
+    },
+    {
+      "id": "policy-50",
+      "name": "north-policy-50.md",
+      "text": "North unit 50 travel reimbursement: maximum hotel rate is 169 CAD per night. Receipt review owner is Finance unit 50. This synthetic policy is current for October 2026."
+    }
+  ],
+  "cases": [
+    {
+      "id": "question-1",
+      "sourceId": "policy-1",
+      "question": "What is the maximum hotel rate for North unit 1 travel reimbursement?",
+      "expected": "120 CAD per night"
+    },
+    {
+      "id": "question-2",
+      "sourceId": "policy-2",
+      "question": "What is the maximum hotel rate for North unit 2 travel reimbursement?",
+      "expected": "121 CAD per night"
+    },
+    {
+      "id": "question-3",
+      "sourceId": "policy-3",
+      "question": "What is the maximum hotel rate for North unit 3 travel reimbursement?",
+      "expected": "122 CAD per night"
+    },
+    {
+      "id": "question-4",
+      "sourceId": "policy-4",
+      "question": "What is the maximum hotel rate for North unit 4 travel reimbursement?",
+      "expected": "123 CAD per night"
+    },
+    {
+      "id": "question-5",
+      "sourceId": "policy-5",
+      "question": "What is the maximum hotel rate for North unit 5 travel reimbursement?",
+      "expected": "124 CAD per night"
+    },
+    {
+      "id": "question-6",
+      "sourceId": "policy-6",
+      "question": "What is the maximum hotel rate for North unit 6 travel reimbursement?",
+      "expected": "125 CAD per night"
+    },
+    {
+      "id": "question-7",
+      "sourceId": "policy-7",
+      "question": "What is the maximum hotel rate for North unit 7 travel reimbursement?",
+      "expected": "126 CAD per night"
+    },
+    {
+      "id": "question-8",
+      "sourceId": "policy-8",
+      "question": "What is the maximum hotel rate for North unit 8 travel reimbursement?",
+      "expected": "127 CAD per night"
+    },
+    {
+      "id": "question-9",
+      "sourceId": "policy-9",
+      "question": "What is the maximum hotel rate for North unit 9 travel reimbursement?",
+      "expected": "128 CAD per night"
+    },
+    {
+      "id": "question-10",
+      "sourceId": "policy-10",
+      "question": "What is the maximum hotel rate for North unit 10 travel reimbursement?",
+      "expected": "129 CAD per night"
+    },
+    {
+      "id": "question-11",
+      "sourceId": "policy-11",
+      "question": "What is the maximum hotel rate for North unit 11 travel reimbursement?",
+      "expected": "130 CAD per night"
+    },
+    {
+      "id": "question-12",
+      "sourceId": "policy-12",
+      "question": "What is the maximum hotel rate for North unit 12 travel reimbursement?",
+      "expected": "131 CAD per night"
+    },
+    {
+      "id": "question-13",
+      "sourceId": "policy-13",
+      "question": "What is the maximum hotel rate for North unit 13 travel reimbursement?",
+      "expected": "132 CAD per night"
+    },
+    {
+      "id": "question-14",
+      "sourceId": "policy-14",
+      "question": "What is the maximum hotel rate for North unit 14 travel reimbursement?",
+      "expected": "133 CAD per night"
+    },
+    {
+      "id": "question-15",
+      "sourceId": "policy-15",
+      "question": "What is the maximum hotel rate for North unit 15 travel reimbursement?",
+      "expected": "134 CAD per night"
+    },
+    {
+      "id": "question-16",
+      "sourceId": "policy-16",
+      "question": "What is the maximum hotel rate for North unit 16 travel reimbursement?",
+      "expected": "135 CAD per night"
+    },
+    {
+      "id": "question-17",
+      "sourceId": "policy-17",
+      "question": "What is the maximum hotel rate for North unit 17 travel reimbursement?",
+      "expected": "136 CAD per night"
+    },
+    {
+      "id": "question-18",
+      "sourceId": "policy-18",
+      "question": "What is the maximum hotel rate for North unit 18 travel reimbursement?",
+      "expected": "137 CAD per night"
+    },
+    {
+      "id": "question-19",
+      "sourceId": "policy-19",
+      "question": "What is the maximum hotel rate for North unit 19 travel reimbursement?",
+      "expected": "138 CAD per night"
+    },
+    {
+      "id": "question-20",
+      "sourceId": "policy-20",
+      "question": "What is the maximum hotel rate for North unit 20 travel reimbursement?",
+      "expected": "139 CAD per night"
+    },
+    {
+      "id": "question-21",
+      "sourceId": "policy-21",
+      "question": "What is the maximum hotel rate for North unit 21 travel reimbursement?",
+      "expected": "140 CAD per night"
+    },
+    {
+      "id": "question-22",
+      "sourceId": "policy-22",
+      "question": "What is the maximum hotel rate for North unit 22 travel reimbursement?",
+      "expected": "141 CAD per night"
+    },
+    {
+      "id": "question-23",
+      "sourceId": "policy-23",
+      "question": "What is the maximum hotel rate for North unit 23 travel reimbursement?",
+      "expected": "142 CAD per night"
+    },
+    {
+      "id": "question-24",
+      "sourceId": "policy-24",
+      "question": "What is the maximum hotel rate for North unit 24 travel reimbursement?",
+      "expected": "143 CAD per night"
+    },
+    {
+      "id": "question-25",
+      "sourceId": "policy-25",
+      "question": "What is the maximum hotel rate for North unit 25 travel reimbursement?",
+      "expected": "144 CAD per night"
+    },
+    {
+      "id": "question-26",
+      "sourceId": "policy-26",
+      "question": "What is the maximum hotel rate for North unit 26 travel reimbursement?",
+      "expected": "145 CAD per night"
+    },
+    {
+      "id": "question-27",
+      "sourceId": "policy-27",
+      "question": "What is the maximum hotel rate for North unit 27 travel reimbursement?",
+      "expected": "146 CAD per night"
+    },
+    {
+      "id": "question-28",
+      "sourceId": "policy-28",
+      "question": "What is the maximum hotel rate for North unit 28 travel reimbursement?",
+      "expected": "147 CAD per night"
+    },
+    {
+      "id": "question-29",
+      "sourceId": "policy-29",
+      "question": "What is the maximum hotel rate for North unit 29 travel reimbursement?",
+      "expected": "148 CAD per night"
+    },
+    {
+      "id": "question-30",
+      "sourceId": "policy-30",
+      "question": "What is the maximum hotel rate for North unit 30 travel reimbursement?",
+      "expected": "149 CAD per night"
+    },
+    {
+      "id": "question-31",
+      "sourceId": "policy-31",
+      "question": "What is the maximum hotel rate for North unit 31 travel reimbursement?",
+      "expected": "150 CAD per night"
+    },
+    {
+      "id": "question-32",
+      "sourceId": "policy-32",
+      "question": "What is the maximum hotel rate for North unit 32 travel reimbursement?",
+      "expected": "151 CAD per night"
+    },
+    {
+      "id": "question-33",
+      "sourceId": "policy-33",
+      "question": "What is the maximum hotel rate for North unit 33 travel reimbursement?",
+      "expected": "152 CAD per night"
+    },
+    {
+      "id": "question-34",
+      "sourceId": "policy-34",
+      "question": "What is the maximum hotel rate for North unit 34 travel reimbursement?",
+      "expected": "153 CAD per night"
+    },
+    {
+      "id": "question-35",
+      "sourceId": "policy-35",
+      "question": "What is the maximum hotel rate for North unit 35 travel reimbursement?",
+      "expected": "154 CAD per night"
+    },
+    {
+      "id": "question-36",
+      "sourceId": "policy-36",
+      "question": "What is the maximum hotel rate for North unit 36 travel reimbursement?",
+      "expected": "155 CAD per night"
+    },
+    {
+      "id": "question-37",
+      "sourceId": "policy-37",
+      "question": "What is the maximum hotel rate for North unit 37 travel reimbursement?",
+      "expected": "156 CAD per night"
+    },
+    {
+      "id": "question-38",
+      "sourceId": "policy-38",
+      "question": "What is the maximum hotel rate for North unit 38 travel reimbursement?",
+      "expected": "157 CAD per night"
+    },
+    {
+      "id": "question-39",
+      "sourceId": "policy-39",
+      "question": "What is the maximum hotel rate for North unit 39 travel reimbursement?",
+      "expected": "158 CAD per night"
+    },
+    {
+      "id": "question-40",
+      "sourceId": "policy-40",
+      "question": "What is the maximum hotel rate for North unit 40 travel reimbursement?",
+      "expected": "159 CAD per night"
+    },
+    {
+      "id": "question-41",
+      "sourceId": "policy-41",
+      "question": "What is the maximum hotel rate for North unit 41 travel reimbursement?",
+      "expected": "160 CAD per night"
+    },
+    {
+      "id": "question-42",
+      "sourceId": "policy-42",
+      "question": "What is the maximum hotel rate for North unit 42 travel reimbursement?",
+      "expected": "161 CAD per night"
+    },
+    {
+      "id": "question-43",
+      "sourceId": "policy-43",
+      "question": "What is the maximum hotel rate for North unit 43 travel reimbursement?",
+      "expected": "162 CAD per night"
+    },
+    {
+      "id": "question-44",
+      "sourceId": "policy-44",
+      "question": "What is the maximum hotel rate for North unit 44 travel reimbursement?",
+      "expected": "163 CAD per night"
+    },
+    {
+      "id": "question-45",
+      "sourceId": "policy-45",
+      "question": "What is the maximum hotel rate for North unit 45 travel reimbursement?",
+      "expected": "164 CAD per night"
+    },
+    {
+      "id": "question-46",
+      "sourceId": "policy-46",
+      "question": "What is the maximum hotel rate for North unit 46 travel reimbursement?",
+      "expected": "165 CAD per night"
+    },
+    {
+      "id": "question-47",
+      "sourceId": "policy-47",
+      "question": "What is the maximum hotel rate for North unit 47 travel reimbursement?",
+      "expected": "166 CAD per night"
+    },
+    {
+      "id": "question-48",
+      "sourceId": "policy-48",
+      "question": "What is the maximum hotel rate for North unit 48 travel reimbursement?",
+      "expected": "167 CAD per night"
+    },
+    {
+      "id": "question-49",
+      "sourceId": "policy-49",
+      "question": "What is the maximum hotel rate for North unit 49 travel reimbursement?",
+      "expected": "168 CAD per night"
+    },
+    {
+      "id": "question-50",
+      "sourceId": "policy-50",
+      "question": "What is the maximum hotel rate for North unit 50 travel reimbursement?",
+      "expected": "169 CAD per night"
+    }
+  ]
+}
