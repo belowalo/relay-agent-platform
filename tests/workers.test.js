@@ -8,7 +8,7 @@ import path from 'node:path';
 import http from 'node:http';
 test('two workers share capacity, fence ownership, recover crashed reads, and cancel across processes', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'relay-workers-')),
-    port = 14325,
+    port = Number(process.env.RELAY_WORKER_TEST_PORT) || 14325,
     origin = `http://127.0.0.1:${port}`,
     children = [];
   let cookie,

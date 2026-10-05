@@ -150,6 +150,25 @@ before(async () => {
       return;
     }
     res.setHeader('Content-Type', 'text/event-stream');
+    if (req.url.startsWith('/tool-broken/')) {
+      res.write(
+        'data: ' +
+          JSON.stringify({
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    { index: 0, id: 'partial', function: { name: 'lookup', arguments: '{' } },
+                  ],
+                },
+              },
+            ],
+          }) +
+          '\n\n',
+      );
+      setTimeout(() => res.destroy(), 25);
+      return;
+    }
     if (req.url.startsWith('/broken/')) {
       res.write(
         'data: ' + JSON.stringify({ choices: [{ delta: { content: 'Partial text' } }] }) + '\n\n',
@@ -185,7 +204,10 @@ before(async () => {
     }
     res.write(
       'data: ' +
-        JSON.stringify({ choices: [], usage: { prompt_tokens: 20, completion_tokens: 10 } }) +
+        JSON.stringify({
+          choices: [{ delta: {}, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 20, completion_tokens: 10 },
+        }) +
         '\n\n',
     );
     res.end('data: [DONE]\n\n');
@@ -292,7 +314,8 @@ test('no fallback on authentication errors or partial streamed output', async ()
   const backup = await connection('/unused');
   const auth = await connection('/unauthorized');
   const broken = await connection('/broken');
-  for (const primary of [auth, broken]) {
+  const toolBroken = await connection('/tool-broken');
+  for (const primary of [auth, broken, toolBroken]) {
     const result = await run(
       graph(
         node('model', 'model', { connectionId: primary.id, fallbackConnectionIds: [backup.id] }),
