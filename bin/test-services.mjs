@@ -5,9 +5,18 @@ if (!process.env.FOUNDATION_TEST_DATABASE_URL || !process.env.FOUNDATION_TEST_RE
   );
   process.exitCode = 1;
 } else {
-  const child = spawn(process.execPath, ['--test', 'tests/foundation-services.test.js'], {
-    stdio: 'inherit',
-  });
+  const child = spawn(
+    process.execPath,
+    [
+      '--test',
+      '--test-concurrency=1',
+      'tests/foundation-services.test.js',
+      'tests/production-runtime-services.test.js',
+    ],
+    {
+      stdio: 'inherit',
+    },
+  );
   child.on('error', () => {
     process.exitCode = 1;
   });

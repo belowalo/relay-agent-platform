@@ -243,7 +243,7 @@ test(
 );
 
 test(
-  'legacy server rejects production selection before creating a SQLite database or vault',
+  'production server fails closed without adapters before creating a SQLite database or vault',
   { timeout: 10000 },
   async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'relay-foundation-guard-'));
@@ -254,7 +254,7 @@ test(
           timeout: 5000,
         }),
         (error) => {
-          assert.match(error.stderr, /legacy SQLite/);
+          assert.match(error.stderr, /Runtime command failed/);
           assert.ok(!error.stderr.includes('fixture-password'));
           return true;
         },
