@@ -201,6 +201,11 @@ export function createRuntimeRepository(database, { leaseMs = 30000 } = {}) {
       return tx(context, async (s) => {
         const w = await scoped(s, 'workflows', id, 'FOR UPDATE');
         if (!w) fail('NOT_FOUND');
+        const existing = await s.one(
+          'SELECT id FROM relay.versions WHERE workspace_id=$1 AND workflow_id=$2 AND revision=$3',
+          [context.workspaceId, id, w.revision],
+        );
+        if (existing) return existing.id;
         const graph = await snapshot(s, decode(w.graph), [id]);
         const vid = uuid();
         await s.query(
@@ -208,6 +213,20 @@ export function createRuntimeRepository(database, { leaseMs = 30000 } = {}) {
           [vid, context.workspaceId, id, w.revision, w.name, json(graph), instant()],
         );
         return vid;
+      });
+    },
+    updateWorkflow(context, id, { name, graph, revision }) {
+      if (!Number.isSafeInteger(revision) || revision < 1) fail('VALIDATION_ERROR');
+      checkGraph(graph);
+      return tx(context, async (s) => {
+        const current = await scoped(s, 'workflows', id, 'FOR UPDATE');
+        if (!current) fail('NOT_FOUND');
+        if (Number(current.revision) !== revision) fail('CONFLICT');
+        await s.query(
+          'UPDATE relay.workflows SET name=$3,graph=$4,revision=revision+1,updated_at=$5 WHERE id=$1 AND workspace_id=$2',
+          [id, context.workspaceId, name || current.name, json(graph), instant()],
+        );
+        return scoped(s, 'workflows', id);
       });
     },
     createRun(context, { workflowId, versionId, input, mode = 'live', limits }) {

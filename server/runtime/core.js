@@ -5,6 +5,42 @@ export const json = (value) => JSON.stringify(value ?? null);
 export const decode = (value) => (value == null ? null : JSON.parse(value));
 export const uuid = () => crypto.randomUUID();
 export const instant = () => new Date().toISOString();
+// Keep legacy field aliases while exposing v1 camelCase row fields. JSON payload
+// keys are user data and are never renamed; bigint counters become safe numbers.
+export function publicRow(row) {
+  if (!row) return row;
+  const result = {};
+  const jsonColumns = new Set([
+    'graph',
+    'input',
+    'output',
+    'usage',
+    'config',
+    'arguments',
+    'result',
+    'resolution',
+    'checkpoint',
+    'data',
+  ]);
+  const numericColumns = new Set([
+    'revision',
+    'sequence',
+    'event_seq',
+    'attempt',
+    'max_running',
+    'max_queued',
+    'attempts',
+    'active_ms',
+  ]);
+  for (const [key, raw] of Object.entries(row)) {
+    let value = jsonColumns.has(key) && typeof raw === 'string' ? decode(raw) : raw;
+    if (numericColumns.has(key) && typeof raw === 'string' && Number.isSafeInteger(Number(raw)))
+      value = Number(raw);
+    result[key] = value;
+    if (key.includes('_')) result[key.replace(/_([a-z])/g, (_, c) => c.toUpperCase())] = value;
+  }
+  return result;
+}
 export class RuntimeError extends Error {
   constructor(code, message = code) {
     super(message);

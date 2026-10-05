@@ -10,6 +10,7 @@ import {
   plan,
   json,
   safeCode,
+  publicRow,
 } from '../server/runtime/core.js';
 import { readImport } from '../server/runtime/import.js';
 import { sqliteFixture, node, edge, linear } from './helpers/runtime-fixtures.js';
@@ -21,6 +22,19 @@ test('exact argument hashes canonicalize keys, retain types and reject non-JSON 
 test('arbitrary dependency codes never enter persisted or public errors', () => {
   assert.equal(safeCode({ code: 'PRIVATE_PAYLOAD' }), 'EXECUTION_FAILED');
   assert.equal(safeCode({ code: 'RATE_LIMITED' }), 'RATE_LIMITED');
+});
+test('public rows decode JSON once, preserve payload keys and expose stable camelCase aliases', () => {
+  const row = publicRow({
+    workflow_id: 'a',
+    input: json({ user_key: 'value' }),
+    output: json('plain string'),
+    revision: '2',
+  });
+  assert.equal(row.workflowId, 'a');
+  assert.equal(row.workflow_id, 'a');
+  assert.deepEqual(row.input, { user_key: 'value' });
+  assert.equal(row.output, 'plain string');
+  assert.equal(row.revision, 2);
 });
 test('limits reject unbounded resources and graph cycles', () => {
   assert.throws(() => limitsFor({ rounds: 13 }), /INVALID_LIMITS/);

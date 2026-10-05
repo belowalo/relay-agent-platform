@@ -61,6 +61,38 @@ export function sqliteFixture(file) {
     '2026-01-01T00:00:00Z',
   );
   db.prepare('INSERT INTO members VALUES(?,?,?)').run('fixture_workspace', 'fixture_user', 'owner');
+  db.prepare('INSERT INTO collections(id,workspace_id,name,created_at) VALUES(?,?,?,?)').run(
+    'fixture_collection',
+    'fixture_workspace',
+    'Synthetic documents',
+    '2026-01-01T00:00:00Z',
+  );
+  db.prepare(
+    'INSERT INTO sources(id,workspace_id,collection_id,name,status,content,created_at) VALUES(?,?,?,?,?,?,?)',
+  ).run(
+    'fixture_source',
+    'fixture_workspace',
+    'fixture_collection',
+    'Synthetic document',
+    'ready',
+    'Synthetic document text',
+    '2026-01-01T00:00:00Z',
+  );
+  db.prepare('INSERT INTO chunks VALUES(?,?,?,?,?,?)').run(
+    'fixture_chunk',
+    'fixture_workspace',
+    'fixture_collection',
+    'fixture_source',
+    0,
+    'Synthetic document text',
+  );
+  db.prepare('INSERT INTO embeddings VALUES(?,?,?,?,?)').run(
+    'fixture_chunk',
+    'fixture_workspace',
+    'fixture_collection',
+    'synthetic-embedding',
+    '[0.1,0.2]',
+  );
   const graph = linear();
   db.prepare(
     'INSERT INTO workflows(id,workspace_id,name,graph,created_at,updated_at) VALUES(?,?,?,?,?,?)',
@@ -97,6 +129,32 @@ export function sqliteFixture(file) {
     'fixture_run',
     'work',
     'running',
+  );
+  db.prepare(
+    'INSERT INTO applications(id,workspace_id,workflow_id,version_id,name,settings,token_hash,created_at,graph_snapshot) VALUES(?,?,?,?,?,?,?,?,?)',
+  ).run(
+    'fixture_application',
+    'fixture_workspace',
+    'fixture_workflow',
+    'fixture_version',
+    'Synthetic publication',
+    '{}',
+    'synthetic-token-digest',
+    '2026-01-01T00:00:00Z',
+    json(graph),
+  );
+  db.prepare(
+    'INSERT INTO schedules(id,workspace_id,workflow_id,name,interval_minutes,input,mode,next_at,created_at) VALUES(?,?,?,?,?,?,?,?,?)',
+  ).run(
+    'fixture_schedule',
+    'fixture_workspace',
+    'fixture_workflow',
+    'Legacy halted schedule',
+    60,
+    '{}',
+    'live',
+    1,
+    '2026-01-01T00:00:00Z',
   );
   db.prepare(
     'INSERT INTO actions(id,workspace_id,run_id,step_id,tool_id,status,side_effect,created_at) VALUES(?,?,?,?,?,?,?,?)',

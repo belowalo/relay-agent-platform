@@ -1,7 +1,7 @@
 import express from 'express';
 import helmet from 'helmet';
 import { tenantContextSchema } from '../foundation/contracts.js';
-import { decode, json, instant, fail, checkGraph, safeCode } from './core.js';
+import { decode, fail, safeCode, publicRow } from './core.js';
 export function createRuntimeApi({
   repository,
   scheduler,
@@ -24,6 +24,11 @@ export function createRuntimeApi({
       .json({ profile: 'production', runtimeIntegrated: true, draining: draining() }),
   );
   const router = express.Router({ mergeParams: true });
+  router.use((req, res, next) => {
+    const original = res.json.bind(res);
+    res.json = (value) => original(Array.isArray(value) ? value.map(publicRow) : publicRow(value));
+    next();
+  });
   router.use(async (req, res, next) => {
     try {
       const context = tenantContextSchema.parse(await authenticate(req));
@@ -51,16 +56,18 @@ export function createRuntimeApi({
   router.post('/workflows', async (req, res) =>
     res.status(201).json({ id: await repository.createWorkflow(req.context, req.body) }),
   );
+  router.get('/workflows/:id', async (req, res) => {
+    const workflow = await repository.tx(req.context, (s) =>
+      s.one('SELECT * FROM relay.workflows WHERE id=$1 AND workspace_id=$2', [
+        req.params.id,
+        req.context.workspaceId,
+      ]),
+    );
+    if (!workflow) fail('NOT_FOUND');
+    res.json(workflow);
+  });
   router.put('/workflows/:id', async (req, res) => {
-    checkGraph(req.body.graph);
-    await repository.tx(req.context, async (s) => {
-      const updated = await s.one(
-        'UPDATE relay.workflows SET name=$3,graph=$4,revision=revision+1,updated_at=$5 WHERE id=$1 AND workspace_id=$2 RETURNING id',
-        [req.params.id, req.context.workspaceId, req.body.name, json(req.body.graph), instant()],
-      );
-      if (!updated) fail('NOT_FOUND');
-    });
-    res.json({ ok: true });
+    res.json(await repository.updateWorkflow(req.context, req.params.id, req.body));
   });
   router.post('/workflows/:id/publish', async (req, res) =>
     res.json({ id: await repository.publish(req.context, req.params.id) }),
@@ -93,22 +100,13 @@ export function createRuntimeApi({
     if (!run) fail('NOT_FOUND');
     res.json({
       ...run,
-      graph: decode(run.graph),
-      input: decode(run.input),
-      output: decode(run.output),
-      usage: decode(run.usage),
-      steps: await repository.getSteps(req.context, run.id),
+      steps: (await repository.getSteps(req.context, run.id)).map(publicRow),
     });
   });
   router.get('/runs/:id/events', async (req, res) => {
     const after = Number(req.query.after || 0);
     if (!Number.isSafeInteger(after) || after < 0) fail('VALIDATION_ERROR');
-    res.json(
-      (await repository.events(req.context, req.params.id, after)).map((row) => ({
-        ...row,
-        data: decode(row.data),
-      })),
-    );
+    res.json(await repository.events(req.context, req.params.id, after));
   });
   router.post('/runs/:id/cancel', async (req, res) => {
     await repository.cancel(req.context, req.params.id);

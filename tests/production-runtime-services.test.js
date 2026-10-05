@@ -567,6 +567,22 @@ test(
             (await fetch(origin + `/api/w/${c.workspaceId}/runs/${run}/events`)).status,
             200,
           );
+          const detail = await (await fetch(origin + `/api/w/${c.workspaceId}/runs/${run}`)).json();
+          assert.deepEqual(detail.input, { value: 1 });
+          assert.equal(detail.graph.nodes.length, 3);
+          assert.equal(detail.workspaceId, c.workspaceId);
+          const workflow = await (
+            await fetch(origin + `/api/w/${c.workspaceId}/workflows/${detail.workflowId}`)
+          ).json();
+          assert.equal(workflow.revision, 1);
+          const save = () =>
+            fetch(origin + `/api/w/${c.workspaceId}/workflows/${workflow.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: json({ name: workflow.name, revision: 1, graph: workflow.graph }),
+            });
+          assert.equal((await save()).status, 200);
+          assert.equal((await save()).status, 409);
         },
       );
       await t.test(
