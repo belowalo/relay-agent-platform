@@ -123,10 +123,26 @@ try {
       new Blob([corpusDocument(index, profile.chunksPerDocument)]),
       `synthetic-policy-${index}.md`,
     );
-    const source = await workspace.owner.ok(
-      `${workspace.base}/collections/${workspace.collection.id}/upload`,
-      form,
-    );
+    // Corpus setup is outside the measurement window. Honor the actual upload
+    // boundary instead of disabling it or counting provisioning 429s as load.
+    let source;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const response = await workspace.owner.request(
+        `${workspace.base}/collections/${workspace.collection.id}/upload`,
+        form,
+      );
+      if (response.status === 429) {
+        await sleep(Math.max(1000, Number(response.headers.get('retry-after') || 61) * 1000));
+        continue;
+      }
+      assert.ok(
+        response.status < 300,
+        `Corpus upload: HTTP ${response.status} ${JSON.stringify(response.data)}`,
+      );
+      source = response.data;
+      break;
+    }
+    assert.ok(source, 'Corpus provisioning remained rate limited');
     return { source, workspace };
   }
   for (let batch = 0; batch < profile.documents; batch += 8) {

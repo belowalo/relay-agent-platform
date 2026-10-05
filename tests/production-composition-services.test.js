@@ -133,7 +133,14 @@ test(
           },
           ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         });
-        return { r, data: await r.json() };
+        const content = await r.text();
+        let data;
+        try {
+          data = JSON.parse(content);
+        } catch {
+          data = content;
+        }
+        return { r, data };
       }
       const a = await request('/api/auth/register', {
         email: `owner-${suffix}@relay.test`,
