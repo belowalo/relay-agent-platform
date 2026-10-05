@@ -202,7 +202,8 @@ before(async () => {
       for (const frame of [
         { type: 'message_start', message: { usage: { input_tokens: 7 } } },
         { type: 'content_block_delta', delta: { text: 'Anthropic fixture answer' } },
-        { type: 'message_delta', usage: { output_tokens: 4 } },
+        { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 4 } },
+        { type: 'message_stop' },
       ])
         res.write('data: ' + JSON.stringify(frame) + '\n\n');
       res.end();
@@ -267,7 +268,18 @@ before(async () => {
       }
       res.write(
         'data: ' +
-          JSON.stringify({ choices: [], usage: { prompt_tokens: 9, completion_tokens: 5 } }) +
+          JSON.stringify({
+            choices: [
+              {
+                delta: {},
+                finish_reason:
+                  data.tools?.length && !data.messages.some((m) => m.role === 'tool')
+                    ? 'tool_calls'
+                    : 'stop',
+              },
+            ],
+            usage: { prompt_tokens: 9, completion_tokens: 5 },
+          }) +
           '\n\ndata: [DONE]\n\n',
       );
       res.end();

@@ -9,7 +9,7 @@ import http from 'node:http';
 import { freeTestPort } from './helpers/port.js';
 test('two workers share capacity, fence ownership, recover crashed reads, and cancel across processes', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'relay-workers-')),
-    port = await freeTestPort(),
+    port = Number(process.env.RELAY_WORKER_TEST_PORT) || await freeTestPort(),
     origin = `http://127.0.0.1:${port}`,
     children = [];
   let cookie,
