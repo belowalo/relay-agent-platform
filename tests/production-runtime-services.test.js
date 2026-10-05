@@ -860,6 +860,54 @@ test(
           assert.ok(value && !value.includes('graph') && !value.includes('input'));
           await consumer.close();
           await dispatcher.close();
+          // Simulate Redis data loss only inside this randomly isolated test namespace.
+          const lost = await create();
+          const publisher = createDispatcher({
+            repository: repo,
+            queue,
+            listWorkspaces: async () => [c.workspaceId],
+          });
+          await publisher.tick();
+          await publisher.close();
+          const oldReference = await repo.tx(c, (s) =>
+            s.one(
+              "SELECT id FROM relay.job_outbox WHERE resource_id=$1 AND state='published' ORDER BY created_at DESC LIMIT 1",
+              [lost],
+            ),
+          );
+          assert.ok(oldReference);
+          let cursor = '0';
+          do {
+            const found = await redis.scan(cursor, 'MATCH', `${prefix}:*`, 'COUNT', 100);
+            cursor = found[0];
+            if (found[1].length) await redis.del(...found[1]);
+          } while (cursor !== '0');
+          await repo.tx(c, (s) =>
+            s.query(
+              "UPDATE relay.job_outbox SET published_at=now()-interval '6 seconds' WHERE resource_id=$1",
+              [lost],
+            ),
+          );
+          const repaired = createDispatcher({
+              repository: repo,
+              queue,
+              listWorkspaces: async () => [c.workspaceId],
+            }),
+            replacement = queue.createWorker(worker().execute);
+          try {
+            for (let i = 0; i < 100 && (await repo.getRun(c, lost)).status !== 'completed'; i++) {
+              await repaired.tick();
+              await delay(25);
+            }
+            assert.equal((await repo.getRun(c, lost)).status, 'completed');
+            const references = await repo.tx(c, (s) =>
+              s.all('SELECT id FROM relay.job_outbox WHERE resource_id=$1', [lost]),
+            );
+            assert.ok(references.some((r) => r.id !== oldReference.id));
+          } finally {
+            await repaired.close();
+            await replacement.close();
+          }
         },
       );
       await t.test(
