@@ -5,6 +5,7 @@ data/
 !.env.example
 !.env.production.example
 test-results/
+verification-results/
 playwright-report/
 *.log
 __pycache__/

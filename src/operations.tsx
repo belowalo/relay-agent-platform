@@ -61,14 +61,7 @@ export function RunTable({ runs, go }: { runs: any[]; go: Navigate }) {
         </thead>
         <tbody>
           {runs.map((r) => (
-            <tr
-              key={r.id}
-              onClick={() => go('history', r.id)}
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') go('history', r.id);
-              }}
-            >
+            <tr key={r.id} onClick={() => go('history', r.id)}>
               <td>
                 <span className="table-name">
                   <Network size={17} />
@@ -89,7 +82,16 @@ export function RunTable({ runs, go }: { runs: any[]; go: Navigate }) {
               <td>{duration(r.created_at, r.finished_at)}</td>
               <td>{date(r.created_at)}</td>
               <td>
-                <ChevronRight size={16} />
+                <Button
+                  variant="icon"
+                  aria-label={`Inspect run ${r.id}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    go('history', r.id);
+                  }}
+                >
+                  <ChevronRight size={16} />
+                </Button>
               </td>
             </tr>
           ))}
@@ -169,6 +171,7 @@ export function RunDetails({
   const { data: run, reload } = useData(`${base}/runs/${runId}`, notify);
   const [selected, setSelected] = useState(''),
     [tab, setTab] = useState('output');
+  const [decisionBusy, setDecisionBusy] = useState(false);
   useEffect(() => {
     const s = new EventSource(`${base}/runs/${runId}/events`);
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -191,6 +194,22 @@ export function RunDetails({
     run.steps.find((s: any) => s.status === 'waiting') ||
     run.steps[0];
   const events = run.events.filter((e: any) => e.node_id === step?.node_id);
+  async function decide(approved: boolean) {
+    setDecisionBusy(true);
+    try {
+      await api(`${base}/runs/${run.id}/approve`, {
+        nodeId: step.node_id,
+        approved,
+        ...(approved ? {} : { feedback: 'Rejected in run inspector' }),
+      });
+      reload();
+    } catch (error) {
+      notify((error as Error).message, true);
+      reload();
+    } finally {
+      setDecisionBusy(false);
+    }
+  }
   return (
     <div className="run-detail">
       <div className="run-heading">
@@ -252,6 +271,33 @@ export function RunDetails({
         <div className="error-banner">
           <AlertTriangle size={18} />
           {run.error}
+        </div>
+      )}
+      <details className="run-diagnostics panel">
+        <summary>Run diagnostics</summary>
+        <dl>
+          <dt>Run ID</dt>
+          <dd>{run.id}</dd>
+          {run.requestId && (
+            <>
+              <dt>Request ID</dt>
+              <dd>{run.requestId}</dd>
+            </>
+          )}
+          <dt>Created</dt>
+          <dd>{run.created_at}</dd>
+          <dt>Finished</dt>
+          <dd>{run.finished_at || 'Not terminal'}</dd>
+        </dl>
+        <p>
+          Share these identifiers with your operator. Retrying an uncertain external action requires
+          reconciliation. Cancellation cannot undo an accepted external action.
+        </p>
+      </details>
+      {run.status === 'waiting' && (
+        <div role="status" className="info-banner">
+          This run is waiting for a human decision. Select the waiting step to inspect its exact
+          input and tool arguments.
         </div>
       )}
       <div className="run-stats">
@@ -333,6 +379,7 @@ export function RunDetails({
                   .map((a: any) => (
                     <div key={a.id}>
                       <strong>{a.tool_name}</strong>
+                      <small>Approval {a.id} · exact arguments</small>
                       <pre className="result-block">{pretty(a.input)}</pre>
                     </div>
                   ))}
@@ -343,29 +390,16 @@ export function RunDetails({
                 <div className="inline-actions">
                   <Button
                     variant="primary"
-                    disabled={!editable(role)}
-                    onClick={async () => {
-                      await api(`${base}/runs/${run.id}/approve`, {
-                        nodeId: step.node_id,
-                        approved: true,
-                      });
-                      reload();
-                    }}
+                    disabled={!editable(role) || decisionBusy}
+                    onClick={() => void decide(true)}
                   >
                     <Check size={15} />
                     Approve & continue
                   </Button>
                   <Button
                     variant="danger"
-                    disabled={!editable(role)}
-                    onClick={async () => {
-                      await api(`${base}/runs/${run.id}/approve`, {
-                        nodeId: step.node_id,
-                        approved: false,
-                        feedback: 'Rejected in run inspector',
-                      });
-                      reload();
-                    }}
+                    disabled={!editable(role) || decisionBusy}
+                    onClick={() => void decide(false)}
                   >
                     Reject
                   </Button>
@@ -560,6 +594,11 @@ export function Applications(p: PageProps) {
                 <Badge status="ready">Published · v{a.revision}</Badge>
               </div>
               <h3>{a.name}</h3>
+              <p>
+                Saved draft: v
+                {workflows?.find((f) => f.id === a.workflow_id)?.revision ?? 'unknown'} · Published:
+                v{a.revision}. Republish to apply draft changes.
+              </p>
               <p>
                 {a.settings.public ? 'Public chat enabled' : 'Access token required'} ·{' '}
                 {a.settings.mode === 'preview' ? 'Development preview' : 'Live execution'}

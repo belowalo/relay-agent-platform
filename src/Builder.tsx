@@ -171,6 +171,18 @@ function BuilderInner(p: PageProps & { workflowId: string }) {
     [drawer, setDrawer] = useState(false),
     [validation, setValidation] = useState<string[] | null>(null),
     [inspectorTab, setInspectorTab] = useState('configure');
+  const [decisionBusy, setDecisionBusy] = useState(false);
+  async function decide(approved: boolean) {
+    setDecisionBusy(true);
+    try {
+      await api(`${p.base}/runs/${runId}/approve`, { nodeId: selected, approved });
+      setRun(await api(`${p.base}/runs/${runId}`));
+    } catch (error) {
+      p.notify((error as Error).message, true);
+    } finally {
+      setDecisionBusy(false);
+    }
+  }
   const flow = useReactFlow(),
     updateNodeInternals = useUpdateNodeInternals(),
     revision = useRef(1),
@@ -1500,28 +1512,26 @@ function BuilderInner(p: PageProps & { workflowId: string }) {
                         {activeStep.status === 'waiting' && (
                           <div className="approval-panel">
                             <p>{config.prompt || 'Review this checkpoint'}</p>
+                            {run.approvals
+                              ?.filter((a: any) => a.node_id === selected)
+                              .map((a: any) => (
+                                <div key={a.id}>
+                                  <strong>{a.tool_name} · exact arguments</strong>
+                                  <pre>{pretty(a.input)}</pre>
+                                </div>
+                              ))}
                             <Button
                               variant="primary"
-                              disabled={!editable}
-                              onClick={() =>
-                                api(`${p.base}/runs/${runId}/approve`, {
-                                  nodeId: selected,
-                                  approved: true,
-                                })
-                              }
+                              disabled={!editable || decisionBusy}
+                              onClick={() => void decide(true)}
                             >
                               <Check size={14} />
                               Approve & continue
                             </Button>
                             <Button
                               variant="danger"
-                              disabled={!editable}
-                              onClick={() =>
-                                api(`${p.base}/runs/${runId}/approve`, {
-                                  nodeId: selected,
-                                  approved: false,
-                                })
-                              }
+                              disabled={!editable || decisionBusy}
+                              onClick={() => void decide(false)}
                             >
                               Reject
                             </Button>

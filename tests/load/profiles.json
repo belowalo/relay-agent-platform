@@ -1,0 +1,52 @@
+{
+  "smoke": {
+    "durationSeconds": 20,
+    "warmupSeconds": 5,
+    "workspaces": 1,
+    "usersPerWorkspace": 1,
+    "documents": 20,
+    "chunksPerDocument": 10,
+    "concurrency": 4,
+    "apiRps": 10,
+    "retrievalRps": 2,
+    "ingestionEverySeconds": 5,
+    "faultEveryRuns": 10
+  },
+  "load": {
+    "durationSeconds": 300,
+    "warmupSeconds": 30,
+    "workspaces": 10,
+    "usersPerWorkspace": 10,
+    "documents": 5000,
+    "chunksPerDocument": 10,
+    "concurrency": 25,
+    "apiRps": 20,
+    "retrievalRps": 10,
+    "ingestionEverySeconds": 10,
+    "faultEveryRuns": 20
+  },
+  "soak": {
+    "durationSeconds": 3600,
+    "warmupSeconds": 300,
+    "workspaces": 10,
+    "usersPerWorkspace": 10,
+    "documents": 5000,
+    "chunksPerDocument": 10,
+    "concurrency": 25,
+    "apiRps": 20,
+    "retrievalRps": 10,
+    "ingestionEverySeconds": 10,
+    "faultEveryRuns": 20
+  },
+  "thresholds": {
+    "apiP95Ms": 300,
+    "retrievalP95Ms": 1000,
+    "dispatchP95Ms": 2000,
+    "unexpectedErrorRateExclusive": 0.01,
+    "minimumRateFraction": 0.95,
+    "stableMemoryGrowthExclusive": 0.1,
+    "maximumQueuedRuns": 50,
+    "remainingActiveRuns": 0,
+    "recoveryMs": 15000
+  }
+}

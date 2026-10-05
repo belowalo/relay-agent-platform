@@ -121,6 +121,8 @@ Docker Compose provides an API and worker sharing a local volume; `docker compos
 
 ## Verify and extend
 
+See [production acceptance and qualification commands](docs/production/VERIFICATION.md) and [five business examples](examples/business/README.md). Local fixtures and smoke results are separate from the coordinator's final integrated/live release gates.
+
 ```powershell
 npm run check
 npx playwright install chromium

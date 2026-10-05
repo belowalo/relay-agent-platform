@@ -13,8 +13,8 @@
     "test": "node --test --test-concurrency=1 tests/*.test.js",
     "test:browser": "playwright test",
     "check": "npm run build && npm test",
-    "format": "prettier --write src server/*.js server/foundation tests sdk/javascript/*.mjs bin/*.mjs vite.config.ts playwright.config.ts README.md CONTRIBUTING.md SECURITY.md docs/*.md docs/production .github/workflows/*.yml",
-    "format:check": "prettier --check src server/*.js server/foundation tests sdk/javascript/*.mjs bin/*.mjs vite.config.ts playwright.config.ts README.md CONTRIBUTING.md SECURITY.md docs/*.md docs/production .github/workflows/*.yml",
+    "format": "prettier --write src server/*.js server/foundation tests examples sdk/javascript/*.mjs bin/*.mjs vite.config.ts playwright.config.ts README.md CONTRIBUTING.md SECURITY.md docs/*.md docs/production .github/workflows/*.yml",
+    "format:check": "prettier --check src server/*.js server/foundation tests examples sdk/javascript/*.mjs bin/*.mjs vite.config.ts playwright.config.ts README.md CONTRIBUTING.md SECURITY.md docs/*.md docs/production .github/workflows/*.yml",
     "worker": "node server/worker.js",
     "start:api": "node server/index.js",
     "foundation:config": "node bin/foundation.mjs config",
@@ -22,7 +22,16 @@
     "foundation:probe": "node bin/foundation.mjs probe",
     "foundation:types": "tsc --ignoreConfig --noEmit --strict --skipLibCheck server/foundation/ports.d.ts",
     "test:foundation": "node --test tests/foundation.test.js",
-    "test:services": "node bin/test-services.mjs"
+    "test:services": "node bin/test-services.mjs",
+    "test:acceptance": "node --test --test-concurrency=1 tests/acceptance/journeys.test.js tests/acceptance/harness.test.js tests/acceptance/examples.test.js",
+    "test:acceptance:services": "node --test --test-concurrency=1 tests/acceptance/production-services.test.js",
+    "test:acceptance:live": "node tests/acceptance/live-quality.mjs",
+    "acceptance:quality:score": "node tests/acceptance/review-quality.mjs",
+    "test:load": "node tests/load/run.mjs load",
+    "test:soak": "node tests/load/run.mjs soak",
+    "test:load:smoke": "node tests/load/run.mjs smoke",
+    "test:failure": "node --test --test-concurrency=1 tests/acceptance/failure.test.js",
+    "acceptance:fixture": "node tests/load/fixture.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.0",

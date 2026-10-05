@@ -1,5 +1,7 @@
 # Verification evidence
 
+Production acceptance, load/soak/failure harnesses, business examples and integration/live prerequisites are in [production verification](production/VERIFICATION.md). Its [branch evidence](production/evidence/VERIFICATION.md) is explicitly separate from final integrated release qualification.
+
 Release verification in October 2026 uses Windows locally and GitHub Actions on Ubuntu. Version 0.3: 39 passing integration tests and 8 passing browser journeys. Node.js 22.16 locally, Node 24 in CI, SQLite, React 19, React Flow 12, Express 5, Vite 8, TypeScript 7. Exact package versions are recorded in `package-lock.json`.
 
 ## Build and backend

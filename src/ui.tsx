@@ -1,5 +1,7 @@
 import {
   useState,
+  useEffect,
+  useRef,
   useId,
   Children,
   isValidElement,
@@ -61,6 +63,43 @@ export function Modal({
   onClose: () => void;
   wide?: boolean;
 }) {
+  const dialog = useRef<HTMLElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    const panel = dialog.current!;
+    const focusable = () =>
+      Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]',
+        ),
+      ).filter((element) => element.getClientRects().length > 0);
+    (panel.querySelector<HTMLElement>('[autofocus]') || focusable()[0] || panel).focus();
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        close.current();
+      }
+      if (event.key === 'Tab') {
+        const elements = focusable();
+        const index = elements.indexOf(document.activeElement as HTMLElement);
+        if (
+          !elements.length ||
+          (event.shiftKey ? index <= 0 : index === elements.length - 1 || index < 0)
+        ) {
+          event.preventDefault();
+          (event.shiftKey ? elements.at(-1) : elements[0])?.focus();
+        }
+      }
+    };
+    panel.addEventListener('keydown', keydown);
+    return () => {
+      panel.removeEventListener('keydown', keydown);
+      if (previous?.isConnected) previous.focus();
+    };
+  }, []);
   return (
     <div
       className="modal-backdrop"
@@ -69,6 +108,8 @@ export function Modal({
       }}
     >
       <section
+        ref={dialog}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -106,10 +147,14 @@ export function Field({
       {Children.map(children, (child) =>
         isValidElement(child) &&
         (['input', 'textarea', 'select'].includes(String(child.type)) || child.type === Select)
-          ? cloneElement(child as ReactElement<any>, { id, 'aria-labelledby': id + '-label' })
+          ? cloneElement(child as ReactElement<any>, {
+              id,
+              'aria-labelledby': id + '-label',
+              'aria-describedby': hint ? id + '-hint' : undefined,
+            })
           : child,
       )}
-      {hint && <small>{hint}</small>}
+      {hint && <small id={id + '-hint'}>{hint}</small>}
     </div>
   );
 }

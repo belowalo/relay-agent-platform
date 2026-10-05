@@ -51,7 +51,7 @@ test('public hosted chat, authenticated API and an embedded widget on another or
   const fixture = http.createServer((req, res) => {
     res.setHeader('Content-Type', 'text/html');
     res.end(
-      `<html><body><h1>Widget host fixture</h1><script src="http://127.0.0.1:14322/widget.js" data-app="${application.id}"></script></body></html>`,
+      `<html><body><h1>Widget host fixture</h1><script src="${new URL(page.url()).origin}/widget.js" data-app="${application.id}"></script></body></html>`,
     );
   });
   await new Promise<void>((r) => fixture.listen(0, '127.0.0.1', r));

@@ -25,6 +25,9 @@ export function Connections(p: PageProps) {
     [models, setModels] = useState<string[]>([]),
     [testing, setTesting] = useState(''),
     [deleting, setDeleting] = useState<any>(null);
+  const [testResults, setTestResults] = useState<
+    Record<string, { message: string; error: boolean }>
+  >({});
   return (
     <>
       <PageHeader
@@ -93,8 +96,16 @@ export function Connections(p: PageProps) {
                     setTesting(c.id);
                     try {
                       const r = await api(`${p.base}/connections/${c.id}/test`, {});
+                      setTestResults((results) => ({
+                        ...results,
+                        [c.id]: { message: r.message, error: false },
+                      }));
                       p.notify(r.message);
                     } catch (e) {
+                      setTestResults((results) => ({
+                        ...results,
+                        [c.id]: { message: (e as Error).message, error: true },
+                      }));
                       p.notify((e as Error).message, true);
                     } finally {
                       setTesting('');
@@ -124,6 +135,27 @@ export function Connections(p: PageProps) {
                   <Trash2 size={15} />
                 </Button>
               </footer>
+              {testResults[c.id] && (
+                <div
+                  role={testResults[c.id].error ? 'alert' : 'status'}
+                  className={
+                    testResults[c.id].error ? 'error-banner connection-result' : 'connection-result'
+                  }
+                >
+                  <p>{testResults[c.id].message}</p>
+                  {testResults[c.id].error && (
+                    <p>
+                      {/auth|credential|key/i.test(testResults[c.id].message)
+                        ? 'Edit the connection and check the key and provider permissions, then test again.'
+                        : /quota|credit|billing/i.test(testResults[c.id].message)
+                          ? 'Check provider credits and quota, or choose another funded connection before running Live.'
+                          : /rate/i.test(testResults[c.id].message)
+                            ? 'Wait for the provider limit to reset or reduce concurrent runs, then test again.'
+                            : 'Check the endpoint, model ID and permitted network access, then test again.'}
+                    </p>
+                  )}
+                </div>
+              )}
             </article>
           ))}
         </div>
