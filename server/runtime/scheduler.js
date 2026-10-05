@@ -22,6 +22,11 @@ export function createRuntimeScheduler({ repository, authorize }) {
       )
         fail('INVALID_SCHEDULE');
       return repository.tx(context, async (s) => {
+        const clock = await s.one(`SELECT ${clockSql} AS runtime_now`);
+        const due = nextSchedule(
+          { intervalMinutes, cronExpression, timezone },
+          Number(clock.runtime_now),
+        );
         const version = await s.one(
           'SELECT id FROM relay.versions WHERE id=$1 AND workspace_id=$2 AND workflow_id=$3',
           [versionId, context.workspaceId, workflowId],
@@ -38,7 +43,7 @@ export function createRuntimeScheduler({ repository, authorize }) {
             intervalMinutes,
             json(input),
             mode,
-            next,
+            due,
             instant(),
             cronExpression,
             timezone,
@@ -66,7 +71,7 @@ export function createRuntimeScheduler({ repository, authorize }) {
         });
         await repository.tx(actorContext, async (s) => {
           const schedule = await s.one(
-            `SELECT * FROM relay.schedules WHERE id=$1 AND workspace_id=$2 AND enabled=1 AND next_at<=${clockSql} FOR UPDATE SKIP LOCKED`,
+            `SELECT *,${clockSql} AS runtime_now FROM relay.schedules WHERE id=$1 AND workspace_id=$2 AND enabled=1 AND next_at<=${clockSql} FOR UPDATE SKIP LOCKED`,
             [candidate.id, context.workspaceId],
           );
           if (!schedule) return;
@@ -100,7 +105,7 @@ export function createRuntimeScheduler({ repository, authorize }) {
           // Coalesce downtime; do not flood the queue with every missed interval.
           await s.query('UPDATE relay.schedules SET next_at=$2,last_run_id=$3 WHERE id=$1', [
             schedule.id,
-            nextSchedule(schedule, Date.now()),
+            nextSchedule(schedule, Number(schedule.runtime_now)),
             runId,
           ]);
         });

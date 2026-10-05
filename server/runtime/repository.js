@@ -307,8 +307,8 @@ export function createRuntimeRepository(database, { leaseMs = 30000 } = {}) {
           );
         }
         const row = await s.one(
-          `UPDATE relay.runs SET status='running',lease_owner=$2,lease_generation=lease_generation+1,lease_until=${clockSql}+$3,active_since=$4,recovery_count=$5 WHERE id=$1 RETURNING *`,
-          [runId, ownerId, leaseMs, instant(), r.recovery_count],
+          `UPDATE relay.runs SET status='running',lease_owner=$2,lease_generation=lease_generation+1,lease_until=${clockSql}+$3,active_since=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),recovery_count=$4 WHERE id=$1 RETURNING *`,
+          [runId, ownerId, leaseMs, r.recovery_count],
         );
         await s.query(
           'UPDATE relay.runtime_capacity SET last_claimed_at=now() WHERE workspace_id=$1',
@@ -414,8 +414,8 @@ export function createRuntimeRepository(database, { leaseMs = 30000 } = {}) {
             const node = decode(r.graph).nodes.find((n) => n.id === step.node_id);
             if (!['loop', 'subworkflow'].includes(node?.data.kind)) continue;
             const children = await s.all(
-              'SELECT status FROM relay.runs WHERE parent_id=$1 AND child_key LIKE $2',
-              [r.id, step.node_id + ':%'],
+              'SELECT status FROM relay.runs WHERE parent_id=$1 AND starts_with(child_key,$2)',
+              [r.id, step.node_id + ':'],
             );
             if (
               children.length &&
