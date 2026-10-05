@@ -915,6 +915,7 @@ test(
         async () => {
           const samples = [];
           const overhead = [];
+          const executionOverhead = [];
           const dispatch = [];
           // Performance uses the production 30s lease; 400ms above is deliberate fault injection.
           const perfRepo = createRuntimeRepository(database, { leaseMs: 30000 });
@@ -936,6 +937,10 @@ test(
                 .filter((m) => m.runId === id && m.name === 'runtime.provider_ms')
                 .reduce((sum, m) => sum + m.ms, 0);
               overhead.push(samples.at(-1) - provider);
+              const timing = await until(() =>
+                metrics.find((m) => m.runId === id && m.name === 'runtime.wall_ms'),
+              );
+              executionOverhead.push(timing.ms - provider);
               assert.equal((await repo.getRun(c, id)).status, 'completed');
               const history = await repo.events(c, id);
               dispatch.push(
@@ -958,6 +963,7 @@ test(
                 fixtureProviderMs: 20,
                 wallP95Ms: Number(p95(samples).toFixed(2)),
                 applicationOverheadP95Ms: Number(p95(overhead).toFixed(2)),
+                executionOverheadP95Ms: Number(p95(executionOverhead).toFixed(2)),
                 dispatchP95Ms: Number(p95(dispatch).toFixed(2)),
                 scope:
                   'serial create+publish+outbox+Redis+worker, 250ms dispatcher sweep, production 30s lease; single service host; excludes production API load qualification',
