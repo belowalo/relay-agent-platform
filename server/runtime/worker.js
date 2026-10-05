@@ -11,6 +11,7 @@ import {
   plan,
   getPath,
   RuntimeError,
+  safeCode,
 } from './core.js';
 const WAIT = Symbol('waiting');
 const stringify = (value) => (typeof value === 'string' ? value : json(value));
@@ -41,10 +42,27 @@ export function createRuntimeWorker({
   ownerId = uuid(),
   leaseMs = 30000,
   shutdownMs = 30000,
+  nodeConcurrency = 8,
 }) {
   if (typeof authorize !== 'function' || !usage?.reserve || !usage?.settle || !usage?.release)
     fail('MISSING_RUNTIME_PORTS');
+  if (!Number.isInteger(nodeConcurrency) || nodeConcurrency < 1 || nodeConcurrency > 128)
+    fail('INVALID_LIMITS');
   const active = new Map();
+  let activeNodes = 0;
+  async function nodeSlot(signal, invoke) {
+    while (activeNodes >= nodeConcurrency) {
+      signal.throwIfAborted();
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    signal.throwIfAborted();
+    activeNodes++;
+    try {
+      return await invoke();
+    } finally {
+      activeNodes--;
+    }
+  }
   let draining = false;
   async function permitted(context, run, signal) {
     signal.throwIfAborted();
@@ -151,7 +169,7 @@ export function createRuntimeWorker({
           .catch(() => {});
       throw error.knownNotExecuted === true
         ? error
-        : new RuntimeError(action ? 'UNCERTAIN_ACTION' : error.code || 'DEPENDENCY_UNAVAILABLE');
+        : new RuntimeError(action ? 'UNCERTAIN_ACTION' : safeCode(error, 'DEPENDENCY_UNAVAILABLE'));
     }
   }
   async function agent(ctx, c, input, orchestrator = false) {
@@ -515,7 +533,8 @@ export function createRuntimeWorker({
     }
   }
   async function execute(reference) {
-    if (draining || reference.kind !== 'workflow.run' || active.has(reference.resourceId)) return;
+    if (reference.kind !== 'workflow.run') fail('UNSUPPORTED_JOB_KIND');
+    if (draining || active.has(reference.resourceId)) return;
     // Queue-supplied workspace does not authenticate. Load under RLS, then recover saved authorized actor.
     const lookup = {
       workspaceId: reference.workspaceId,
@@ -628,7 +647,7 @@ export function createRuntimeWorker({
             };
             try {
               const output = await abortable(
-                () => handle(ctx, item.node.data.config || {}, item.input),
+                () => nodeSlot(signal, () => handle(ctx, item.node.data.config || {}, item.input)),
                 signal,
               );
               signal.throwIfAborted();
@@ -636,7 +655,7 @@ export function createRuntimeWorker({
                 await repository.completeStep(context, lease, step.id, boundOutput(output, limits));
             } catch (e) {
               if (e.code === 'STALE_LEASE') throw e;
-              const code = e.code || (signal.aborted ? 'NODE_TIMEOUT' : 'EXECUTION_FAILED');
+              const code = safeCode(e, signal.aborted ? 'NODE_TIMEOUT' : 'EXECUTION_FAILED');
               const allowed = ['DEPENDENCY_UNAVAILABLE', 'RATE_LIMITED'].includes(code);
               retry =
                 (await repository.failStep(
@@ -657,9 +676,7 @@ export function createRuntimeWorker({
       }
       fail('GRAPH_STALLED');
     } catch (e) {
-      await repository
-        .finish(context, lease, 'failed', null, e.code || 'EXECUTION_FAILED')
-        .catch(() => {});
+      await repository.finish(context, lease, 'failed', null, safeCode(e)).catch(() => {});
     } finally {
       clearInterval(heartbeat);
       clearTimeout(durationTimer);

@@ -43,7 +43,7 @@ export async function startProduction({
       },
       async (s) => {
         const row = await s.one(
-          "SELECT EXISTS(SELECT 1 FROM relay.schema_migrations WHERE name='0104-runtime-integrity.sql') AS ready",
+          "SELECT EXISTS(SELECT 1 FROM relay.schema_migrations WHERE name='0105-immutable-triggers.sql') AS ready",
         );
         if (!row?.ready) fail('RUNTIME_SCHEMA_NOT_READY');
       },
@@ -79,6 +79,7 @@ export async function startProduction({
         telemetry: ports.telemetry,
         leaseMs: Number(env.RUNTIME_LEASE_MS || 30000),
         shutdownMs: config.shutdownTimeoutMs,
+        nodeConcurrency: config.workerConcurrency,
       });
       dispatcher = createDispatcher({
         repository,
@@ -86,7 +87,13 @@ export async function startProduction({
         listWorkspaces,
         onError: (code) => ports.telemetry?.event(code, {}),
       });
-      transport = queue.createWorker(worker.execute);
+      transport = queue.createWorker(async (reference) => {
+        if (reference.kind === 'workflow.run') return worker.execute(reference);
+        const handler = ports.jobHandlers?.[reference.kind];
+        if (!handler) fail('UNSUPPORTED_JOB_KIND');
+        // Domain handler must reload its authoritative record, reauthorize, and fence its own claims.
+        await handler(reference);
+      });
       let ticking = false;
       timer = setInterval(async () => {
         if (ticking || closed) return;

@@ -1,7 +1,7 @@
 import express from 'express';
 import helmet from 'helmet';
 import { tenantContextSchema } from '../foundation/contracts.js';
-import { decode, json, instant, fail, checkGraph } from './core.js';
+import { decode, json, instant, fail, checkGraph, safeCode } from './core.js';
 export function createRuntimeApi({
   repository,
   scheduler,
@@ -217,7 +217,7 @@ export function createRuntimeApi({
   registerRoutes?.(app, { repository, scheduler });
   app.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
-    const code = error.code || 'INTERNAL_ERROR';
+    const code = safeCode(error, 'INTERNAL_ERROR');
     const status = ['NOT_FOUND'].includes(code)
       ? 404
       : ['FORBIDDEN', 'APPROVAL_REQUIRED'].includes(code)

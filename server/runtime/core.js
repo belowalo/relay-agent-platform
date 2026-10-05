@@ -14,6 +14,20 @@ export class RuntimeError extends Error {
 export const fail = (code) => {
   throw new RuntimeError(code);
 };
+const dependencyCodes = new Set([
+  'DEPENDENCY_UNAVAILABLE',
+  'RATE_LIMITED',
+  'BUDGET_EXCEEDED',
+  'UNAUTHENTICATED',
+  'FORBIDDEN',
+  'CONFLICT',
+  'NOT_FOUND',
+  'VALIDATION_ERROR',
+]);
+export function safeCode(error, fallback = 'EXECUTION_FAILED') {
+  if (error instanceof RuntimeError && /^[A-Z_]{1,64}$/.test(error.code)) return error.code;
+  return dependencyCodes.has(error?.code) ? error.code : fallback;
+}
 export const clockSql = '(extract(epoch from clock_timestamp())*1000)::bigint';
 export function contextFor(run) {
   return tenantContextSchema.parse({

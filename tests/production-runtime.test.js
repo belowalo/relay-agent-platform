@@ -3,13 +3,24 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { argumentHash, limitsFor, checkGraph, plan, json } from '../server/runtime/core.js';
+import {
+  argumentHash,
+  limitsFor,
+  checkGraph,
+  plan,
+  json,
+  safeCode,
+} from '../server/runtime/core.js';
 import { readImport } from '../server/runtime/import.js';
 import { sqliteFixture, node, edge, linear } from './helpers/runtime-fixtures.js';
 test('exact argument hashes canonicalize keys, retain types and reject non-JSON values', () => {
   assert.equal(argumentHash({ a: 1, b: ['x'] }), argumentHash({ b: ['x'], a: 1 }));
   assert.notEqual(argumentHash({ a: 1 }), argumentHash({ a: '1' }));
   assert.throws(() => argumentHash({ a: undefined }), /INVALID_ARGUMENTS/);
+});
+test('arbitrary dependency codes never enter persisted or public errors', () => {
+  assert.equal(safeCode({ code: 'PRIVATE_PAYLOAD' }), 'EXECUTION_FAILED');
+  assert.equal(safeCode({ code: 'RATE_LIMITED' }), 'RATE_LIMITED');
 });
 test('limits reject unbounded resources and graph cycles', () => {
   assert.throws(() => limitsFor({ rounds: 13 }), /INVALID_LIMITS/);

@@ -10,6 +10,7 @@ import {
   limitsFor,
   checkGraph,
   argumentHash,
+  boundOutput,
 } from './core.js';
 
 export function createRuntimeRepository(database, { leaseMs = 30000 } = {}) {
@@ -137,7 +138,13 @@ export function createRuntimeRepository(database, { leaseMs = 30000 } = {}) {
     if (!r) fail('STALE_LEASE');
     return r;
   }
-  const fenced = (context, lease, fn) => tx(context, async (s) => fn(s, await fence(s, lease)));
+  // Consistent tenant-capacity -> run -> step/action lock order also covers child
+  // creation and recursive cancellation, avoiding parent/child lock inversion.
+  const fenced = (context, lease, fn) =>
+    tx(context, async (s) => {
+      await capacity(s);
+      return fn(s, await fence(s, lease));
+    });
   async function release(s, r, status) {
     await s.query(
       `UPDATE relay.runs SET status=$2,active_ms=active_ms+CASE WHEN active_since IS NULL THEN 0 ELSE greatest(0,${clockSql}-(extract(epoch from active_since::timestamptz)*1000)::bigint) END,active_since=NULL,lease_owner=NULL,lease_until=NULL WHERE id=$1`,
@@ -314,11 +321,11 @@ export function createRuntimeRepository(database, { leaseMs = 30000 } = {}) {
       });
     },
     checkpoint(context, lease, stepId, checkpoint) {
-      return fenced(context, lease, (s) =>
+      return fenced(context, lease, (s, r) =>
         s.query('UPDATE relay.steps SET checkpoint=$3 WHERE id=$1 AND run_id=$2', [
           stepId,
           lease.runId,
-          json(checkpoint),
+          json(boundOutput(checkpoint, limitsFor(decode(r.limits)))),
         ]),
       );
     },
@@ -416,6 +423,7 @@ export function createRuntimeRepository(database, { leaseMs = 30000 } = {}) {
     },
     cancel(context, runId) {
       return tx(context, async (s) => {
+        await capacity(s);
         const rows = await s.all(
           'WITH RECURSIVE tree AS (SELECT id FROM relay.runs WHERE id=$1 AND workspace_id=$2 UNION ALL SELECT r.id FROM relay.runs r JOIN tree t ON r.parent_id=t.id WHERE r.workspace_id=$2) SELECT r.* FROM relay.runs r JOIN tree t USING(id) ORDER BY r.id FOR UPDATE OF r',
           [runId, context.workspaceId],
@@ -539,6 +547,7 @@ export function createRuntimeRepository(database, { leaseMs = 30000 } = {}) {
     },
     decide(context, approvalId, hash, approved) {
       return tx(context, async (s) => {
+        await capacity(s);
         const a = await scoped(s, 'runtime_approvals', approvalId);
         if (!a) fail('NOT_FOUND');
         const run = await scoped(s, 'runs', a.run_id, 'FOR UPDATE');
@@ -562,6 +571,7 @@ export function createRuntimeRepository(database, { leaseMs = 30000 } = {}) {
     reconcile(context, actionId, status, result, note) {
       if (!['succeeded', 'failed'].includes(status) || !note) fail('INVALID_RECONCILIATION');
       return tx(context, async (s) => {
+        await capacity(s);
         const a = await scoped(s, 'actions', actionId, 'FOR UPDATE');
         if (a?.status !== 'uncertain') fail('ACTION_CONFLICT');
         await s.query(
@@ -573,6 +583,7 @@ export function createRuntimeRepository(database, { leaseMs = 30000 } = {}) {
     },
     retry(context, runId) {
       return tx(context, async (s) => {
+        await capacity(s);
         const r = await scoped(s, 'runs', runId, 'FOR UPDATE');
         if (!r || !['failed', 'cancelled'].includes(r.status)) fail('RUN_CONFLICT');
         if (
@@ -582,7 +593,6 @@ export function createRuntimeRepository(database, { leaseMs = 30000 } = {}) {
           )
         )
           fail('UNCERTAIN_ACTION');
-        await capacity(s);
         await s.query(
           "UPDATE relay.steps SET status='queued',error=NULL WHERE run_id=$1 AND status IN ('failed','cancelled','skipped','running')",
           [runId],
