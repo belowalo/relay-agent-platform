@@ -112,7 +112,7 @@ try {
   );
   base.push('-f', override);
   await drill('clean-build-and-infrastructure', async () => {
-    await compose('build', 'api', 'backup', 'proxy');
+    await compose('build', 'api', 'backup', 'proxy', 'database');
     await compose(
       'up',
       '-d',

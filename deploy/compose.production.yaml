@@ -93,7 +93,11 @@ services:
     mem_limit: 256m
     cpus: 0.5
   database:
-    image: pgvector/pgvector:pg16-bookworm@sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a
+    image: relay-postgres:local
+    build: { context: .., dockerfile: deploy/Dockerfile.postgres }
+    user: postgres
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     environment:
       {
         POSTGRES_DB: relay,
@@ -120,7 +124,10 @@ services:
     restart: unless-stopped
     stop_grace_period: 60s
   queue:
-    image: redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+    image: redis:8-alpine@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0
+    user: redis
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     command: [sh, /etc/relay/redis-start.sh]
     secrets: [redis_password]
     volumes: ['redis:/data', './redis-start.sh:/etc/relay/redis-start.sh:ro']
@@ -150,7 +157,7 @@ services:
     cpus: 1
     restart: unless-stopped
   prometheus:
-    image: prom/prometheus:v3.6.0@sha256:76947e7ef22f8a698fc638f706685909be425dbe09bd7a2cd7aca849f79b5f64
+    image: prom/prometheus@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
     command: ['--config.file=/etc/prometheus/prometheus.yml', '--storage.tsdb.retention.time=7d']
     secrets: [metrics_token]
     volumes:
@@ -165,14 +172,14 @@ services:
     cpus: 0.5
     restart: unless-stopped
   alertmanager:
-    image: prom/alertmanager:v0.28.1@sha256:27c475db5fb156cab31d5c18a4251ac7ed567746a2483ff264516437a39b15ba
+    image: prom/alertmanager@sha256:e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a
     volumes: ['./observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro']
     networks: [private, egress]
     mem_limit: 128m
     cpus: 0.25
     restart: unless-stopped
   collector:
-    image: otel/opentelemetry-collector-contrib:0.136.0@sha256:45392d534c1edcc809c2d112394029246bc679d2ae5ea7081414a1fc74f2c621
+    image: otel/opentelemetry-collector-contrib@sha256:fd328de2552466ad78385e1b1289c3f2402b1c45f265b252aab1955b42845ac1
     command: ['--config=/etc/otelcol/config.yml']
     volumes: ['./observability/collector.yml:/etc/otelcol/config.yml:ro']
     networks: [private]

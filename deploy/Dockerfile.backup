@@ -1,5 +1,6 @@
 FROM node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS node
-FROM postgres:16-bookworm@sha256:efedf3595f1d6f415c08568ba171029bf54052e754cc9f030e3f2412b21f3d67
+FROM postgres:16-trixie@sha256:1a6ab3f5345eb6dbe04a1349529caabdb0ab09293a09590fad07b2246bfa4b54
+RUN rm -f /usr/local/bin/gosu
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 WORKDIR /app
 COPY bin/backup.mjs bin/backup.mjs
