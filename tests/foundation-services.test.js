@@ -164,6 +164,8 @@ test(
       assert.equal(await queue.probe(), true);
       const reference = job('workspace-a');
       const worker = queue.createWorker(async (received) => {
+        if (received.resourceId === 'failing-run')
+          throw new Error('private-worker-error-must-not-reach-redis');
         count++;
         assert.deepEqual(received, reference);
         complete();
@@ -181,6 +183,17 @@ test(
       await new Promise((resolve) => setTimeout(resolve, 200));
       assert.equal(count, 1);
       await assert.rejects(queue.publish({ ...reference, secret: 'never-publish' }));
+      const failureReference = { ...job('workspace-a'), resourceId: 'failing-run' };
+      await queue.publish(failureReference);
+      const failureKey = `${prefix}:jobs:${failureReference.id}`;
+      let failureReason;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        failureReason = await cleanup.hget(failureKey, 'failedReason');
+        if (failureReason) break;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      assert.equal(failureReason, 'Job execution failed. Inspect authorized run history.');
+      assert.ok(!(await cleanup.hget(failureKey, 'stacktrace')).includes('private-worker-error'));
       await worker.close();
       const persistedResult = await cleanup.hget(`${prefix}:jobs:${reference.id}`, 'returnvalue');
       assert.ok(persistedResult && !persistedResult.includes('private-worker-result'));

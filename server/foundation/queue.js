@@ -75,7 +75,12 @@ export function createJobQueue(config, { onError = () => {} } = {}) {
         'jobs',
         async (entry) => {
           const reference = jobSchema.parse(entry.data);
-          await handler(reference);
+          try {
+            await handler(reference);
+          } catch {
+            // BullMQ persists failedReason/stacktrace; raw handler errors can contain private input.
+            throw new Error('Job execution failed. Inspect authorized run history.');
+          }
           // Business output belongs in PostgreSQL; never persist handler output in Redis.
           return { id: reference.id };
         },

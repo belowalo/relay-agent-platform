@@ -16,7 +16,7 @@ Production domain tables live in schema `relay`. Workspace-bound rows retain `wo
 
 ## Queue and outbox
 
-Job envelope: `{version:1,id:<UUID>,workspaceId,kind,resourceId,requestId}`. Kinds: `workflow.run`, `source.ingest`, `connector.sync`, `evaluation.run`, `maintenance.retention`. No additional fields, credentials, prompts or document text. A job references authoritative persisted state. Worker handler return values are discarded; Redis stores only the reference ID on completion. Business output must be persisted through the database. Queue retention is temporary transport retention, not business history.
+Job envelope: `{version:1,id:<UUID>,workspaceId,kind,resourceId,requestId}`. Kinds: `workflow.run`, `source.ingest`, `connector.sync`, `evaluation.run`, `maintenance.retention`. No additional fields, credentials, prompts or document text. A job references authoritative persisted state. Worker handler return values are discarded; Redis stores only the reference ID on completion. Handler exceptions are replaced with a generic failure before BullMQ persists its failure reason/stack. Business output and authorized error detail must be persisted through the database. Queue retention is temporary transport retention, not business history.
 
 `enqueueInTransaction(session, job)` commits with the associated domain write. Reusing an ID with changed data is a conflict. Dispatcher state is `pending -> publishing -> published`, with owner/expiry/generation. Runtime must implement fenced publish/reconciliation and repairs for an acknowledgement lost after Redis accepted the job. Consumers check terminal state and claim business leases before any action. Redis redelivery, eviction or completed-job cleanup cannot authorize a duplicate effect.
 
