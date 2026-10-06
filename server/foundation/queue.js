@@ -135,6 +135,7 @@ export function createJobQueue(config, { onError = () => {} } = {}) {
         try {
           await bounded(async () => {
             await queue.waitUntilReady();
+            if (stopped) return;
             await producerConnection.zadd(heartbeatKey, Date.now(), workerId);
             await producerConnection.zremrangebyscore(heartbeatKey, '-inf', Date.now() - 600000);
           });

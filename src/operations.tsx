@@ -483,7 +483,10 @@ export function RunHistory(p: PageProps & { runId?: string }) {
     );
   const completed = data?.filter((r) => r.status === 'completed') || [];
   const usage =
-    data?.reduce((n, r) => n + (r.usage.inputTokens || 0) + (r.usage.outputTokens || 0), 0) || 0;
+    data?.reduce(
+      (n, r) => n + (r.usage.tokens ?? (r.usage.inputTokens || 0) + (r.usage.outputTokens || 0)),
+      0,
+    ) || 0;
   return (
     <>
       <PageHeader

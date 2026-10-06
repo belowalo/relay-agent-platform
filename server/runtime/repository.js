@@ -253,6 +253,46 @@ export function createRuntimeRepository(
         });
       });
     },
+    createComponentRun(
+      context,
+      { workflowId, versionId, nodeId, input, mode = 'preview', limits },
+    ) {
+      opaqueId.parse(nodeId);
+      return tx(context, async (s) => {
+        const v = await scoped(s, 'versions', versionId);
+        if (!v || v.workflow_id !== workflowId) fail('NOT_FOUND');
+        const source = decode(v.graph),
+          selected = source.nodes.find((n) => n.id === nodeId);
+        if (
+          !selected ||
+          ['input', 'output', 'orchestrator', 'parallel', 'join'].includes(selected.data.kind)
+        )
+          fail('INVALID_COMPONENT_TEST');
+        const before = uuid(),
+          after = uuid(),
+          edge = (label) => ({
+            id: uuid(),
+            source: nodeId,
+            target: after,
+            ...(label ? { label, data: { branch: label } } : {}),
+          });
+        const graph = {
+          nodes: [
+            { id: before, data: { kind: 'input', label: 'Test payload', config: {} } },
+            selected,
+            { id: after, data: { kind: 'output', label: 'Component result', config: {} } },
+          ],
+          edges: [
+            { id: uuid(), source: before, target: nodeId },
+            ...(selected.data.kind === 'condition' ? ['true', 'false'].map(edge) : [edge()]),
+          ],
+          settings: source.settings,
+        };
+        const id = await createInSession(s, { graph, input, workflowId, versionId, mode, limits });
+        await event(s, id, 'component.test.created', nodeId);
+        return id;
+      });
+    },
     getRun(context, id) {
       return tx(context, (s) => scoped(s, 'runs', id));
     },

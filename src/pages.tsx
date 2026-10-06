@@ -115,7 +115,8 @@ export function Dashboard(p: PageProps & { user: any }) {
   if (!data || !workflows) return <Loading />;
   const completed = data.runs.filter((r: any) => r.status === 'completed'),
     tokens = data.runs.reduce(
-      (t: number, r: any) => t + (r.usage.inputTokens || 0) + (r.usage.outputTokens || 0),
+      (t: number, r: any) =>
+        t + (r.usage.tokens ?? (r.usage.inputTokens || 0) + (r.usage.outputTokens || 0)),
       0,
     ),
     avg = completed.length

@@ -13,7 +13,12 @@ if (
 } else {
   const child = spawn(
     process.execPath,
-    ['--test', 'tests/production-composition-services.test.js'],
+    [
+      '--test',
+      '--test-concurrency=1',
+      'tests/production-import-services.test.js',
+      'tests/production-composition-services.test.js',
+    ],
     { stdio: 'inherit', windowsHide: true },
   );
   child.on('error', () => {

@@ -92,20 +92,23 @@ export function createRuntimeApi({
     body.versionId ||= await repository.publish(req.context, body.workflowId);
     res.status(202).json({ id: await repository.createRun(req.context, body) });
   });
-  router.get('/runs', async (req, res) =>
-    res.json(
-      await repository.tx(req.context, (s) =>
-        s.all(
-          "SELECT r.id,r.workflow_id,r.status,r.mode,r.usage,r.created_at,r.finished_at,r.error,w.name AS workflow_name FROM relay.runs r LEFT JOIN relay.workflows w ON w.workspace_id=r.workspace_id AND w.id=r.workflow_id WHERE r.workspace_id=$1 AND ($2='' OR r.status=$2) AND (r.id ILIKE $3 OR w.name ILIKE $3 OR r.input ILIKE $3) ORDER BY r.created_at DESC LIMIT 1000",
-          [
-            req.context.workspaceId,
-            String(req.query.status || '').slice(0, 30),
-            '%' + String(req.query.q || '').slice(0, 100) + '%',
-          ],
-        ),
+  router.get('/runs', async (req, res) => {
+    const rows = await repository.tx(req.context, (s) =>
+      s.all(
+        "SELECT r.id,r.workflow_id,r.status,r.mode,r.usage,r.created_at,r.finished_at,r.error,w.name AS workflow_name FROM relay.runs r LEFT JOIN relay.workflows w ON w.workspace_id=r.workspace_id AND w.id=r.workflow_id WHERE r.workspace_id=$1 AND ($2='' OR r.status=$2) AND (r.id ILIKE $3 OR w.name ILIKE $3 OR r.input ILIKE $3) ORDER BY r.created_at DESC LIMIT 1000",
+        [
+          req.context.workspaceId,
+          String(req.query.status || '').slice(0, 30),
+          '%' + String(req.query.q || '').slice(0, 100) + '%',
+        ],
       ),
-    ),
-  );
+    );
+    const accounting = await usage?.reportRuns?.(
+      req.context,
+      rows.map((r) => r.id),
+    );
+    res.json(rows.map((r) => ({ ...r, ...(accounting ? { usage: accounting[r.id] } : {}) })));
+  });
   router.get('/runs/:id', async (req, res) => {
     const run = await repository.getRun(req.context, req.params.id);
     if (!run) fail('NOT_FOUND');

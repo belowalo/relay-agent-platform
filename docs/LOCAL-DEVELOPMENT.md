@@ -96,7 +96,7 @@ Publish a saved workflow through **Applications**. Published versions freeze gra
 - API/webhook access requires the application Bearer token, shown once and rotatable.
 - MCP: `POST /api/apps/{id}/mcp` exposes `invoke_workflow` and `get_run` over stateless Streamable HTTP, always token authenticated.
 
-See [SDK and CLI examples](docs/SDK.md) for JavaScript, Python, command-line and MCP use.
+See [SDK and CLI examples](SDK.md) for JavaScript, Python, command-line and MCP use.
 
 ```javascript
 const response = await fetch('http://127.0.0.1:4311/api/apps/APP_ID/invoke', {
@@ -117,11 +117,11 @@ Run leases and generations fence ownership and asynchronous results. Safe interr
 
 External actions have a persistent ledger and idempotency keys. Uncertain side effects block automatic replay. Cancellation aborts active requests but cannot undo actions accepted by another service. There is no exactly-once remote execution guarantee. Interrupted model calls may be billed again on recovery. Recorded usage limits allow in-flight overshoot and are not hard spending caps.
 
-Docker Compose provides an API and worker sharing a local volume; `docker compose up --build --scale worker=2` adds workers. Docker, HTTPS deployment and multi-host infrastructure remain unverified here. See [Deployment](docs/DEPLOYMENT.md).
+Docker Compose provides an API and worker sharing a local volume; `docker compose up --build --scale worker=2` adds workers. Docker, HTTPS deployment and multi-host infrastructure remain unverified here. See [Deployment](DEPLOYMENT.md).
 
 ## Verify and extend
 
-See [production acceptance and qualification commands](docs/production/VERIFICATION.md) and [five business examples](examples/business/README.md). Local fixtures and smoke results are separate from the coordinator's final integrated/live release gates.
+See [production acceptance and qualification commands](production/VERIFICATION.md) and [five business examples](../examples/business/README.md). Local fixtures and smoke results are separate from the coordinator's final integrated/live release gates.
 
 ```powershell
 npm run check
@@ -129,6 +129,6 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-Tests use isolated databases and local fixtures; they preserve your workspace. Semantic inference tests use the cached public embedding model. Screenshots go to ignored `test-results/`. See [Verification](docs/VERIFICATION.md), [Coverage](docs/FEATURE-COVERAGE.md) and [Architecture](docs/ARCHITECTURE.md).
+Tests use isolated databases and local fixtures; they preserve your workspace. Semantic inference tests use the cached public embedding model. Screenshots go to ignored `test-results/`. See [Verification](VERIFICATION.md), [Coverage](FEATURE-COVERAGE.md) and [Architecture](ARCHITECTURE.md).
 
 Source lives in `src/` and `server/`; migrations live in `server/migrations/`. Catalogs and node/tool/provider registries support extensions. Test executors, schemas, cancellation and side-effect behavior when adding capabilities.

@@ -185,6 +185,26 @@ test(
       const listed = (await request(base + '/connections')).data;
       assert.ok(listed[0].hasCredential);
       assert.ok(!JSON.stringify(listed).includes('synthetic-scoped-credential'));
+      assert.equal(
+        (
+          await request(
+            base + '/connections/' + c.data.id,
+            {
+              name: 'Redirect stored key',
+              provider: 'openai-compatible',
+              endpoint: 'https://example.org/v1',
+              model: 'normal',
+              config: {},
+            },
+            'PUT',
+          )
+        ).r.status,
+        409,
+      );
+      assert.equal(
+        (await request(base + '/connections')).data.find((v) => v.id === c.data.id).endpoint,
+        fixture.url + '/v1',
+      );
       const modelGraph = linear('agent', { connectionId: c.data.id, maxTokens: 64 });
       const wf = await request(base + '/workflows', {
         name: 'Metered protocol test',
@@ -204,6 +224,44 @@ test(
       assert.equal(done.usage.tokens, 28);
       assert.equal(done.usage.reservedTokens, 0);
       assert.ok(done.events.length > 0);
+      assert.equal(
+        (await request(base + '/runs')).data.find((r) => r.id === live.data.id).usage.tokens,
+        28,
+      );
+      assert.equal(
+        (await request(base + '/overview')).data.runs.find((r) => r.id === live.data.id).usage
+          .tokens,
+        28,
+      );
+      const exported = await request(base + '/runs/' + live.data.id + '/download');
+      assert.equal(exported.r.status, 200);
+      assert.match(exported.r.headers.get('content-disposition'), /attachment/);
+      assert.equal(exported.data.run.id, live.data.id);
+      const probe = await request(base + '/connections/' + c.data.id + '/test', {});
+      assert.equal(probe.r.status, 200, JSON.stringify(probe.data));
+      assert.equal(
+        (await request(base + '/connection-probes')).data.find((p) => p.id === probe.data.probeId)
+          .state,
+        'settled',
+      );
+      const component = await request(base + '/workflows/' + wf.data.id + '/nodes/work/test', {
+        input: 'Saved component',
+        mode: 'preview',
+      });
+      assert.equal(component.r.status, 202, JSON.stringify(component.data));
+      const componentDone = await until(async () => {
+        const r = (await request(base + '/runs/' + component.data.id)).data;
+        return ['completed', 'failed'].includes(r.status) && r;
+      });
+      assert.equal(componentDone.status, 'completed', componentDone.error);
+      assert.equal(componentDone.usage.tokens, 0);
+      assert.equal(componentDone.graph.nodes.length, 3);
+      assert.ok(componentDone.events.some((e) => e.type === 'component.test.created'));
+      assert.equal(
+        (await request(base + '/workflows/' + wf.data.id + '/nodes/in/test', { input: 'denied' })).r
+          .status,
+        400,
+      );
       evidence.checks.push('real adapter protocol, durable dispatch, model reservation settlement');
       const preview = await request(base + '/workflows/' + wf.data.id + '/runs', {
         input: 'Preview makes no paid call',

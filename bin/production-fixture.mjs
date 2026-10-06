@@ -23,13 +23,42 @@ const server = http.createServer(async (req, res) => {
     res.setHeader('content-type', 'application/json');
     return res.end(JSON.stringify({ accepted: true }));
   }
+  if (req.url === '/research') {
+    res.setHeader('content-type', 'application/json');
+    return res.end(
+      JSON.stringify({
+        title: 'Synthetic public product evidence',
+        text: 'Synthetic external operating policy for qualification.',
+        url: 'https://example.org/research',
+      }),
+    );
+  }
   if (req.url === '/v1/chat/completions') {
+    const request = JSON.parse(body),
+      system = request.messages?.find((m) => m.role === 'system')?.content || '';
+    let content = 'Synthetic protocol response.';
+    if (system.includes('extractive verification')) {
+      const payload = JSON.parse(request.messages.find((m) => m.role === 'user').content),
+        e = payload.evidence.find((e) => e.text.includes('180 CAD')) || payload.evidence[0];
+      content = JSON.stringify({
+        insufficient: !e,
+        conflict: false,
+        claims: e ? [{ text: e.text, references: [{ chunkId: e.chunkId, quote: e.text }] }] : [],
+      });
+    }
+    if (request.stream === false) {
+      res.setHeader('content-type', 'application/json');
+      return res.end(
+        JSON.stringify({
+          choices: [{ message: { content }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 20, completion_tokens: 8, total_tokens: 28 },
+        }),
+      );
+    }
     res.setHeader('content-type', 'text/event-stream');
     const send = (v) => res.write('data: ' + JSON.stringify(v) + '\n\n');
     send({
-      choices: [
-        { index: 0, delta: { content: 'Synthetic protocol response.' }, finish_reason: null },
-      ],
+      choices: [{ index: 0, delta: { content }, finish_reason: null }],
     });
     send({
       choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],

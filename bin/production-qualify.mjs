@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { measureProductionWorkload } from './production-load.mjs';
 import { verifyProductionBrowser } from './production-browser.mjs';
+import { verifyProductionBusiness } from './production-business.mjs';
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'relay-integrated-'));
 const project = 'relay-integrated-' + crypto.randomBytes(4).toString('hex');
 const results = path.resolve(process.env.PRODUCTION_RESULTS || 'production-results');
@@ -548,7 +549,26 @@ try {
     assert.ok(report.workload.passed, JSON.stringify({ ...report.workload, resources: undefined }));
   });
   await drill('actual-production-browser-journeys', async () => {
-    report.browser = await verifyProductionBrowser({ results });
+    report.browser = await verifyProductionBrowser({ results, workflowId });
+  });
+  await drill('five-deployed-business-examples', async () => {
+    report.business = await verifyProductionBusiness({
+      request,
+      base: `/api/w/${workspace}`,
+      collectionId,
+      connectionId,
+      until,
+      applicationRequest: async (path, body, token) => {
+        secrets.push(token);
+        const r = await fetch(api + path, {
+          method: body === undefined ? 'GET' : 'POST',
+          headers: { Authorization: 'Bearer ' + token, 'content-type': 'application/json' },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+          signal: AbortSignal.timeout(15000),
+        });
+        return { r, data: await r.json() };
+      },
+    });
   });
   for (const dependency of ['database', 'queue', 'storage'])
     await drill(dependency + '-readiness-and-recovery', async () => {

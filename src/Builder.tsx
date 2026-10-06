@@ -1717,7 +1717,9 @@ function BuilderInner(p: PageProps & { workflowId: string }) {
               <Zap size={19} />
               <p>
                 {mode === 'preview'
-                  ? 'Preview runs the actual graph with deterministic agent output. Tools and knowledge nodes execute their real integrations.'
+                  ? catalog?.profile === 'production'
+                    ? 'Preview runs the saved graph with deterministic agent output and skips model calls and external tool actions.'
+                    : 'Preview runs the actual graph with deterministic agent output. Tools and knowledge nodes execute their real integrations.'
                   : 'Live execution may use your configured model credits and external tools.'}
               </p>
             </div>
@@ -1885,7 +1887,18 @@ function BuilderInner(p: PageProps & { workflowId: string }) {
                     disabled={!editable}
                     onClick={() => {
                       remember();
-                      setNodes(v.graph.nodes);
+                      setNodes(
+                        v.graph.nodes.map((node: Node) => {
+                          const restored = structuredClone(node);
+                          const c = restored.data.config as Record<string, any>;
+                          if (c) {
+                            delete c.toolSnapshot;
+                            delete c.toolSnapshots;
+                            delete c.graphSnapshot;
+                          }
+                          return restored;
+                        }),
+                      );
                       setEdges(v.graph.edges);
                       setSettings(v.graph.settings || {});
                       markDirty();

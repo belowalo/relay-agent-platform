@@ -1,6 +1,6 @@
 import { chromium, expect } from '@playwright/test';
 import path from 'node:path';
-export async function verifyProductionBrowser({ results }) {
+export async function verifyProductionBrowser({ results, workflowId }) {
   const browser = await chromium.launch({
     args: ['--host-resolver-rules=MAP relay.example.com 127.0.0.1', '--no-proxy-server'],
   });
@@ -21,9 +21,33 @@ export async function verifyProductionBrowser({ results }) {
     await expect(page.getByRole('heading', { name: /^Welcome back,/ })).toBeVisible({
       timeout: 20000,
     });
+    await page.goto(`https://relay.example.com/#page=builder&id=${workflowId}`);
+    await expect(page.getByLabel('Workflow name')).toBeVisible();
+    await page.locator('.canvas-node').filter({ hasText: 'work' }).click();
+    await page
+      .getByLabel('Instructions', { exact: true })
+      .fill('Production browser persistence check.');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByText(/Saved · v/)).toBeVisible();
+    await page.reload();
+    await page.locator('.canvas-node').filter({ hasText: 'work' }).click();
+    await expect(page.getByLabel('Instructions', { exact: true })).toHaveValue(
+      'Production browser persistence check.',
+    );
+    await page.getByRole('button', { name: 'Run workflow', exact: true }).click();
+    await page.getByLabel('Task or input').fill('Production browser preview');
+    await page.getByLabel('Execution mode').selectOption('preview');
+    await page.getByRole('button', { name: 'Start run', exact: true }).click();
+    await expect(page.locator('.run-bar')).toContainText('completed', { timeout: 30000 });
+    await page.locator('.run-bar').click();
+    const download = page.waitForEvent('download');
+    await page.getByRole('link', { name: 'Download', exact: true }).click();
+    await (await download).saveAs(path.join(results, 'browser-run-export.json'));
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
     await page.goto('https://relay.example.com/#page=knowledge');
-    await expect(page.getByText('Deployment documents', { exact: true })).toBeVisible();
-    await page.getByText('Deployment documents', { exact: true }).click();
+    const collection = page.getByRole('button', { name: /^Deployment documents sources/ });
+    await expect(collection).toBeVisible();
+    await collection.click();
     await expect(page.getByText('travel.md', { exact: true })).toBeVisible();
     await page.goto('https://relay.example.com/#page=applications');
     await expect(page.getByRole('heading', { name: 'Applications', exact: true })).toBeVisible();
@@ -34,7 +58,7 @@ export async function verifyProductionBrowser({ results }) {
     for (const [pageId, title] of [
       ['projects', 'Projects'],
       ['workflows', 'Workflows'],
-      ['connections', 'Model connections'],
+      ['connections', 'Credentials & model connections'],
       ['history', 'Run history'],
       ['operations', 'Operations'],
       ['settings', 'Settings'],
@@ -49,6 +73,7 @@ export async function verifyProductionBrowser({ results }) {
       passed: true,
       journeys: [
         'HTTPS password login',
+        'canvas edit, save, reload, preview, run inspection and JSON export',
         'knowledge collection and parsed source visibility',
         'publication capability boundaries',
       ],

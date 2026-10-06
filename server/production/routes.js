@@ -12,6 +12,7 @@ import { publicRow, RuntimeError } from '../runtime/core.js';
 import { registerConnectorRoutes } from '../connectors/routes.js';
 import { registerKnowledgeRoutes } from '../knowledge/routes.js';
 import { registerProductionWorkspace } from './workspace.js';
+import { createModelProbeAccounting } from './model-probes.js';
 const uuid = () => crypto.randomUUID(),
   now = () => new Date().toISOString();
 const decode = (v) => (typeof v === 'string' ? JSON.parse(v) : v);
@@ -65,6 +66,7 @@ export function registerProductionRoutes(
     }
   };
   const tx = (req, fn) => database.transaction(context(req), fn);
+  const probes = createModelProbeAccounting({ database, security });
   const scoped = async (req, table) => {
     const r = await tx(req, (s) =>
       s.one(`SELECT * FROM relay.${table} WHERE workspace_id=$1 AND id=$2`, [
@@ -290,7 +292,13 @@ export function registerProductionRoutes(
             )
           ).map(publicRow),
           activity: [],
-        })),
+        })).then(async (result) => {
+          const accounting = await security.usage.reportRuns(
+            context(req),
+            result.runs.map((r) => r.id),
+          );
+          return { ...result, runs: result.runs.map((r) => ({ ...r, usage: accounting[r.id] })) };
+        }),
       ),
     ),
   );
@@ -323,6 +331,35 @@ export function registerProductionRoutes(
         mode: req.body.mode || 'live',
       });
       res.status(202).json({ id });
+    }),
+  );
+  router.post(
+    '/workflows/:id/nodes/:nodeId/test',
+    permission('run.execute', 'workflow'),
+    route(async (req, res) => {
+      const versionId = await repository.publish(context(req), req.params.id);
+      const id = await repository.createComponentRun(context(req), {
+        workflowId: req.params.id,
+        versionId,
+        nodeId: req.params.nodeId,
+        input: req.body.input,
+        mode: req.body.mode || 'preview',
+      });
+      res.status(202).json({ id });
+    }),
+  );
+  router.get(
+    '/runs/:id/download',
+    permission('run.read', 'run'),
+    route(async (req, res) => {
+      const id = resourceId.parse(req.params.id),
+        run = await repository.getRun(context(req), id);
+      if (!run) throw new PlatformError('NOT_FOUND', 'Run was not found.');
+      res.set('Content-Disposition', `attachment; filename="relay-run-${id}.json"`).json({
+        run: publicRow(run),
+        steps: (await repository.getSteps(context(req), id)).map(publicRow),
+        events: (await repository.events(context(req), id)).map(publicRow),
+      });
     }),
   );
   router.get(
@@ -383,6 +420,17 @@ export function registerProductionRoutes(
         'Configure an endpoint without embedded credentials.',
       );
     const prior = create ? null : await scoped(req, 'connections');
+    if (
+      prior &&
+      decode(prior.config).secretRef &&
+      !b.secret &&
+      (prior.provider !== b.provider ||
+        prior.endpoint.replace(/\/$/, '') !== b.endpoint.replace(/\/$/, ''))
+    )
+      throw new PlatformError(
+        'CONFLICT',
+        'Changing the credential destination or provider requires a replacement credential.',
+      );
     if (create)
       await tx(req, (s) =>
         s.query(
@@ -440,31 +488,33 @@ export function registerProductionRoutes(
     '/connections/:id/test',
     permission('secret.manage', 'connection'),
     route(async (req, res) => {
-      const id = uuid(),
-        ctx = context(req);
-      const result = await modelCall(ctx, {
-        config: { connectionId: req.params.id, maxTokens: 32, temperature: 0 },
-        messages: [{ role: 'user', content: 'Reply with OK.' }],
-        tools: [],
-        meteredCall: async (b, fn) => {
-          const held = await security.usage.reserve(ctx, { ...b, runId: id });
-          try {
-            const result = await fn();
-            await security.usage.settle(ctx, held.id, {
-              tokens: result.usage.tokens,
-              costMicros: result.usage.costMicros,
-              provider: result.provider,
-              model: result.model,
-            });
-            return result;
-          } catch (e) {
-            await security.usage.markUncertain(ctx, held.id);
-            throw e;
-          }
-        },
+      const ctx = context(req);
+      const result = await probes.run(ctx, req.params.id, (meteredCall) =>
+        modelCall(ctx, {
+          config: { connectionId: req.params.id, maxTokens: 32, temperature: 0 },
+          messages: [{ role: 'user', content: 'Reply with OK.' }],
+          tools: [],
+          meteredCall,
+        }),
+      );
+      res.json({
+        ok: true,
+        probeId: result.probeId,
+        provider: result.provider,
+        model: result.model,
+        usage: result.usage,
       });
-      res.json({ ok: true, provider: result.provider, model: result.model, usage: result.usage });
     }),
+  );
+  router.get(
+    '/connection-probes',
+    route(async (req, res) => res.json(await probes.list(context(req)))),
+  );
+  router.post(
+    '/connection-probes/:id/reconcile',
+    route(async (req, res) =>
+      res.json(await probes.reconcile(context(req), req.params.id, req.body)),
+    ),
   );
   router.delete(
     '/connections/:id',

@@ -35,7 +35,9 @@ async function start() {
   });
   server.stdout.on('data', (b) => (logs += b));
   server.stderr.on('data', (b) => (logs += b));
-  for (let i = 0; i < 100; i++) {
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    if (server.exitCode !== null) throw new Error('Isolated server exited: ' + logs);
     try {
       if ((await fetch(origin + '/api/health')).ok) return;
     } catch {}
@@ -225,7 +227,6 @@ before(async () => {
         );
         return;
       }
-      res.setHeader('Content-Type', 'text/event-stream');
       let content = 'Recorded provider fixture response';
       const system = data.messages?.[0]?.content || '';
       if (system.includes('You supervise')) {
@@ -235,6 +236,21 @@ before(async () => {
           assignments: ids.map((nodeId) => ({ nodeId, task: 'Analyze assigned evidence' })),
         });
       }
+      if (data.stream === false) {
+        if (system.includes('Evaluate the answer'))
+          content = JSON.stringify({ score: 0.8, explanation: 'Fixture rubric grade' });
+        else if (system.includes('Return JSON conforming'))
+          content = JSON.stringify({ answer: 'structured fixture' });
+        res.setHeader('Content-Type', 'application/json');
+        res.end(
+          JSON.stringify({
+            choices: [{ message: { content }, finish_reason: 'stop' }],
+            usage: { prompt_tokens: 9, completion_tokens: 5 },
+          }),
+        );
+        return;
+      }
+      res.setHeader('Content-Type', 'text/event-stream');
       if (data.tools?.length && !data.messages.some((m) => m.role === 'tool')) {
         toolRounds++;
         res.write(

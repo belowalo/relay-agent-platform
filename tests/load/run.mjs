@@ -55,7 +55,7 @@ if (process.env.ACCEPTANCE_ORIGIN) {
 }
 // Write and freeze the acceptance targets before provisioning or measuring.
 await fs.writeFile(path.join(output, 'manifest.json'), JSON.stringify(manifest, null, 2));
-let target, fixture, sampler;
+let target, fixture, sampler, corpusProgress;
 const resources = [],
   samples = {
     api: [],
@@ -158,6 +158,12 @@ try {
         workspaces.map((w) => w.owner.ok(`${w.base}/collections/${w.collection.id}/sources`)),
       );
       const failed = states.flat().filter((source) => source.status === 'failed');
+      corpusProgress = states
+        .flat()
+        .reduce(
+          (counts, source) => ({ ...counts, [source.status]: (counts[source.status] || 0) + 1 }),
+          {},
+        );
       assert.equal(failed.length, 0, `Synthetic corpus indexing failed: ${JSON.stringify(failed)}`);
       return states.flat().every((source) => source.status === 'ready');
     },
@@ -459,6 +465,7 @@ try {
         failedAt: new Date().toISOString(),
         classification: 'harness or application failure',
         message: String(error.message).slice(0, 500),
+        corpusProgress,
       },
       null,
       2,

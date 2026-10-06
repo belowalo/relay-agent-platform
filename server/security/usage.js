@@ -178,6 +178,37 @@ export function createUsagePort({ database, authorize }) {
         ),
       );
     },
+    async reportRuns(context, ids) {
+      await authorize(context, 'run.read');
+      ids = z.array(resourceId).max(1000).parse(ids);
+      const rows = await database.transaction(context, (s) =>
+        s.all(
+          `SELECT run_id,
+        coalesce(sum(tokens) FILTER(WHERE status='settled'),0)::text AS tokens,
+        sum(cost_micros) FILTER(WHERE status='settled')::text AS cost,
+        count(*) FILTER(WHERE status='settled' AND cost_micros IS NULL)::int AS unknown_cost_calls,
+        coalesce(sum(maximum_tokens) FILTER(WHERE status IN('reserved','uncertain')),0)::text AS reserved_tokens
+        FROM relay.security_usage WHERE workspace_id=$1 AND run_id=ANY($2::text[]) GROUP BY run_id`,
+          [context.workspaceId, ids],
+        ),
+      );
+      const byId = new Map(rows.map((r) => [r.run_id, r]));
+      return Object.fromEntries(
+        ids.map((id) => {
+          const r = byId.get(id);
+          return [
+            id,
+            {
+              tokens: Number(r?.tokens || 0),
+              reservedTokens: Number(r?.reserved_tokens || 0),
+              estimatedCost:
+                !r || r.unknown_cost_calls || r.cost === null ? null : Number(r.cost) / 1_000_000,
+              unknownCostCalls: r?.unknown_cost_calls || 0,
+            },
+          ];
+        }),
+      );
+    },
     async configure(context, input) {
       await authorize(context, 'budget.manage');
       const b = z

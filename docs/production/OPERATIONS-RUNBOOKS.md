@@ -40,7 +40,7 @@ Trigger: corruption/host loss or recovery rehearsal. Identify the newest indepen
 
 ## Rollback
 
-Trigger: candidate fails readiness, migration or representative flow. Stop candidate intake, capture sanitized diagnosis, restore the recorded image if schema compatibility is proven, otherwise follow restoration with the pre-upgrade archive/image. Verify health, credentials, vectors, blobs, waiting approvals and a controlled run before traffic. Disclose lost writes since the chosen snapshot. Rehearsal restarts the captured same image against restored state; cross-version rollback and domain migration compatibility remain blocked until integration supplies two releases.
+Trigger: candidate fails readiness, migration or representative flow. Stop candidate intake, capture sanitized diagnosis, restore the recorded image if schema compatibility is proven, otherwise follow restoration with the pre-upgrade archive/image. Verify health, credentials, vectors, blobs, waiting approvals and a controlled run before traffic. Disclose lost writes since the chosen snapshot. The integrated harness rebuilds application commit 555a53c on the current hardened base, verifies it against the restored current schema, and returns to the candidate. Count this as evidence only when the exact-commit report records the prior-code rollback drill as passed. Migrations are not reversed; a physical cross-libc PostgreSQL volume upgrade is unsupported.
 
 ## Escalation and closure
 
