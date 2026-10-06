@@ -7,10 +7,17 @@ export async function verifyProductionBrowser({ results, workflowId }) {
   const context = await browser.newContext({ ignoreHTTPSErrors: true });
   const page = await context.newPage(),
     errors = [];
+  let authenticated = false,
+    expectedAnonymousMeDenials = 0;
   page.on('pageerror', () => errors.push('Uncaught browser exception'));
   page.on('response', (r) => {
-    if (new URL(r.url()).pathname.startsWith('/api/') && r.status() >= 400)
-      errors.push(`API ${r.status()} ${new URL(r.url()).pathname}`);
+    const pathname = new URL(r.url()).pathname;
+    if (!authenticated && pathname === '/api/me' && r.status() === 401) {
+      expectedAnonymousMeDenials++;
+      return;
+    }
+    if (pathname.startsWith('/api/') && r.status() >= 400)
+      errors.push(`API ${r.status()} ${pathname}`);
   });
   try {
     await page.goto('https://relay.example.com/');
@@ -21,6 +28,7 @@ export async function verifyProductionBrowser({ results, workflowId }) {
     await expect(page.getByRole('heading', { name: /^Welcome back,/ })).toBeVisible({
       timeout: 20000,
     });
+    authenticated = true;
     await page.goto(`https://relay.example.com/#page=builder&id=${workflowId}`);
     await expect(page.getByLabel('Workflow name')).toBeVisible();
     await page.locator('.canvas-node').filter({ hasText: 'work' }).click();
@@ -71,6 +79,7 @@ export async function verifyProductionBrowser({ results, workflowId }) {
     expect(errors).toEqual([]);
     return {
       passed: true,
+      expectedAnonymousMeDenials,
       journeys: [
         'HTTPS password login',
         'canvas edit, save, reload, preview, run inspection and JSON export',
