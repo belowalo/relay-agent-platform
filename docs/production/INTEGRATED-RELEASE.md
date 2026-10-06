@@ -27,7 +27,7 @@ The default `npm run dev`/`npm start` SQLite profile has different features and 
 Requires Linux Docker Engine/Compose 2.24.4+, Node 24 for drivers, registry/npm/model-download access and adequate local disk. Allocation limits are not capacity measurements. Use a checkout at the exact reviewed commit. Initialize into a private directory outside the checkout:
 
 ```sh
-npm ci
+ONNXRUNTIME_NODE_INSTALL=skip npm ci
 node bin/operations-init.mjs /etc/relay/private
 node bin/provision-embeddings.mjs /etc/relay/private/models
 ```
