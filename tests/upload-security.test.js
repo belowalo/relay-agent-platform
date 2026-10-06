@@ -12,6 +12,14 @@ test('upload subprocess preserves UTF-8 and extracts markup as inert text', asyn
   assert.doesNotMatch(text, /script|execute|<p>/);
 });
 
+test('concurrent upload subprocesses drain their complete output before publication', async () => {
+  const documents = Array.from({ length: 16 }, (_, i) => `Document ${i}: Résumé 🙂\n`.repeat(8000));
+  const parsed = await Promise.all(
+    documents.map((text, i) => parseUpload(Buffer.from(text), `concurrent-${i}.md`)),
+  );
+  assert.deepEqual(parsed, documents);
+});
+
 test('upload input/output bounds, format signatures and production binary isolation gate', async () => {
   await assert.rejects(
     () => parseUpload(Buffer.alloc(15 * 1024 * 1024 + 1), 'large.txt'),

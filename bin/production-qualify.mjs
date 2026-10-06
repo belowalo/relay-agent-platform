@@ -38,7 +38,7 @@ async function run(command, args, options = {}) {
     });
     const timer = setTimeout(() => child.kill('SIGKILL'), options.timeoutMs || 600000);
     child.once('error', reject);
-    child.once('exit', (code) => {
+    child.once('close', (code) => {
       clearTimeout(timer);
       const value = { code, stdout, stderr };
       if (code === 0 || options.allowFailure) resolve(value);
@@ -126,7 +126,7 @@ const graph = (kind, config = {}) => ({
   nodes: ['in', 'work', 'out'].map((id, i) => ({
     id,
     type: 'relay',
-    position: { x: i * 100, y: 0 },
+    position: { x: i * 340, y: 0 },
     data: {
       kind: i === 0 ? 'input' : i === 2 ? 'output' : kind,
       label: id,

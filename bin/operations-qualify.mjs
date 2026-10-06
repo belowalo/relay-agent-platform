@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'relay-operations-'));
 const project = 'relay-ops-' + crypto.randomBytes(4).toString('hex');
 const port = Number(process.env.OPERATIONS_PORT || 18431);
@@ -11,7 +11,7 @@ const tlsPort = Number(process.env.OPERATIONS_TLS_PORT || 18443);
 const reportDir = path.resolve(process.env.OPERATIONS_RESULTS || 'operations-results');
 await fs.mkdir(reportDir, { recursive: true });
 const report = {
-  releaseCommit: process.env.GITHUB_SHA || 'working-tree',
+  releaseCommit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
   qualificationOnly: true,
   runtimeIntegrated: false,
   platform: `${os.platform()}/${os.arch()}`,
@@ -46,7 +46,7 @@ async function run(command, args, { allowFailure = false, timeoutMs = 600000 } =
       clearTimeout(timer);
       reject(error);
     });
-    child.once('exit', (code) => {
+    child.once('close', (code) => {
       clearTimeout(timer);
       if (code === 0 || allowFailure) resolve({ code, stdout, stderr });
       else

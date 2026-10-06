@@ -10,6 +10,7 @@ import { templates, nodeCatalog, toolCatalog, validateGraph } from '../catalog.j
 import { setSessionCookie } from '../security/index.js';
 import { publicRow, RuntimeError } from '../runtime/core.js';
 import { registerConnectorRoutes } from '../connectors/routes.js';
+import { validateConnectorConfig } from '../connectors/index.js';
 import { registerKnowledgeRoutes } from '../knowledge/routes.js';
 import { registerProductionWorkspace } from './workspace.js';
 import { createModelProbeAccounting } from './model-probes.js';
@@ -842,9 +843,33 @@ export function registerProductionRoutes(
       .strict()
       .parse(req.body);
     assertNoInlineSecrets(b.config);
+    b.config = validateConnectorConfig(b.kind, b.config);
     const ctx = context(req),
       id = create ? uuid() : resourceId.parse(req.params.id);
     let prior = create ? null : await connections.get(ctx, id);
+    const destination = (kind, c) =>
+      JSON.stringify([
+        kind,
+        c.endpoint?.replace(/\/$/, '') || null,
+        c.url || null,
+        c.host || null,
+        c.port || null,
+        c.database || null,
+        c.region || null,
+        c.transport || null,
+        c.command || null,
+        c.args || null,
+        c.cwd || null,
+      ]);
+    if (
+      prior?.secretRef &&
+      !b.secret &&
+      destination(prior.kind, prior.config) !== destination(b.kind, b.config)
+    )
+      throw new PlatformError(
+        'CONFLICT',
+        'Changing a connector credential destination requires a replacement credential.',
+      );
     if (create) await connections.save(ctx, id, { kind: b.kind, config: b.config });
     let secretRef = prior?.secretRef;
     if (b.secret) {

@@ -58,7 +58,9 @@ export async function parseUpload(buffer, name) {
     child.stderr.resume();
     child.stdin.on('error', () => {});
     child.on('error', () => finish(new Error('Document parser unavailable')));
-    child.on('exit', (code) =>
+    // A process can exit before its stdout pipe has drained. Resolve only after
+    // close so concurrent uploads cannot publish empty or truncated documents.
+    child.on('close', (code) =>
       finish(code === 0 ? null : new Error('Document could not be parsed within resource limits')),
     );
     child.stdin.end(buffer);

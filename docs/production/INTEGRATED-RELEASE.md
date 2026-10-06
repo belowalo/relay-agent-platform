@@ -95,7 +95,7 @@ Record the current immutable image, configuration and pre-upgrade backup. Apply 
 
 Read private `/health/ready`, `/health/live` and authenticated `/metrics` from the internal management network. Readiness failure should remove an instance from intake; liveness alone proves no dependency health. Search sanitized logs by request/run/trace ID, inspect queue age and ledger states, and inspect provider account history before resolving an uncertain write. Do not retry it merely because a worker restarted. Resolve action success/failure with observed provider evidence using the administrator action reconciliation API. Reconcile usage through the failed step's usage-reconcile endpoint using actual provider usage; held unknown calls must not be guessed away.
 
-Prometheus rules and `promtool` tests are provided. Supply an approved encrypted trace backend/retention, monitored off-host backup completion/disk capacity, an authenticated Alertmanager receiver and an actual delivery test. The default empty receiver cannot notify an operator. Aggregate fleet-heartbeat/off-host hooks remain gaps; absence must never be interpreted as healthy zero.
+Prometheus rules and `promtool` tests are provided. Supply an approved encrypted trace backend/retention, monitored off-host backup completion/disk capacity, an authenticated Alertmanager receiver and an actual delivery test. The default empty receiver cannot notify an operator. Shared fleet heartbeat metrics are composed; off-host backup/disk hooks remain gaps, and absent metrics must never be interpreted as healthy zero.
 
 ```sh
 node bin/production-qualify.mjs

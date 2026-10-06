@@ -205,6 +205,44 @@ test(
         (await request(base + '/connections')).data.find((v) => v.id === c.data.id).endpoint,
         fixture.url + '/v1',
       );
+      const native = await request(base + '/connectors', {
+        kind: 'github',
+        config: { repositories: ['example/qualification'] },
+        secret: 'synthetic-native-scoped-credential',
+      });
+      assert.equal(native.r.status, 201, JSON.stringify(native.data));
+      assert.equal(
+        (
+          await request(
+            base + '/connectors/' + native.data.id,
+            { kind: 'github', config: { repositories: ['example/qualification-2'] } },
+            'PUT',
+          )
+        ).r.status,
+        200,
+      );
+      assert.equal(
+        (
+          await request(
+            base + '/connectors/' + native.data.id,
+            {
+              kind: 'github',
+              config: {
+                endpoint: 'https://example.org',
+                repositories: ['example/qualification-2'],
+              },
+            },
+            'PUT',
+          )
+        ).r.status,
+        409,
+      );
+      const natives = (await request(base + '/connectors')).data;
+      assert.equal(
+        natives.find((v) => v.id === native.data.id).config.endpoint,
+        'https://api.github.com',
+      );
+      assert.ok(!JSON.stringify(natives).includes('synthetic-native-scoped-credential'));
       const modelGraph = linear('agent', { connectionId: c.data.id, maxTokens: 64 });
       const wf = await request(base + '/workflows', {
         name: 'Metered protocol test',
