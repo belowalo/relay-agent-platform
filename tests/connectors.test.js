@@ -18,6 +18,14 @@ const json = (data, status = 200, headers = {}) =>
   });
 const invoke = (c, action, input = {}) => c.invoke(context, { action, input, secretRef: ref });
 const ghConfig = { repositories: ['acme/relay'] };
+test('vendor results cannot carry resolved credentials into run history or document storage', async () => {
+  const c = connectorFor('github', ghConfig, ports, {
+    fetchImpl: async () => json({ full_name: 'echo fixture-secret' }),
+  });
+  await assert.rejects(invoke(c, 'repositories', { repository: 'acme/relay' }), {
+    code: 'DEPENDENCY_UNAVAILABLE',
+  });
+});
 test('credential scope, configuration, action discovery and schema boundaries fail before network', async () => {
   let calls = 0;
   const c = connectorFor('github', ghConfig, ports, {

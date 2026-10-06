@@ -24,7 +24,7 @@ CMD ["node", "bin/production-entrypoint.mjs"]
 
 FROM runtime AS parser-verification
 COPY --chown=1000:1000 tests/fixtures/knowledge.pdf tests/fixtures/knowledge.docx /tmp/parser-fixtures/
-RUN ["node", "--input-type=module", "-e", "import fs from 'node:fs';import assert from 'node:assert/strict';import {extract} from './server/knowledge/extract-worker.js';for(const ext of ['pdf','docx']){const r=await extract(fs.readFileSync('/tmp/parser-fixtures/knowledge.'+ext),ext);assert.ok(r.segments.some(s=>s.text.includes('Orion')));}console.log('Native binary parser dependencies verified');"]
+RUN ["node", "--input-type=module", "-e", "import fs from 'node:fs';import assert from 'node:assert/strict';import {parseFile} from './server/knowledge/extract.js';for(const ext of ['pdf','docx']){const r=await parseFile(fs.readFileSync('/tmp/parser-fixtures/knowledge.'+ext),'knowledge.'+ext);assert.ok(r.segments.some(s=>s.text.includes('Orion')));}console.log('Isolated binary parser verified under release UID');"]
 FROM runtime
 # Force the verification stage to run without retaining its documents in the release.
 COPY --from=parser-verification /app/package.json /app/package.json

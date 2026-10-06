@@ -98,8 +98,10 @@ export async function synchronizeDocuments(
           item.revision !== undefined &&
           previous.revision === item.revision &&
           !previous.removed
-        )
+        ) {
+          await documents.discard?.(context, input);
           continue;
+        }
         const result = await documents.upsert(context, input);
         await checkpoint.recordItem(item.externalId, {
           sourceId: result.sourceId,

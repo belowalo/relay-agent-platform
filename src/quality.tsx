@@ -672,7 +672,9 @@ export function Operations(p: PageProps) {
           <section className="quality-metrics panel">
             <div>
               <strong>{data.workers.length}</strong>
-              <small>Healthy workers</small>
+              <small>
+                {data.profile === 'production' ? 'Active lease owners' : 'Healthy workers'}
+              </small>
             </div>
             <div>
               <strong>{data.metrics.runs}</strong>
@@ -689,18 +691,32 @@ export function Operations(p: PageProps) {
           </section>
           <div className="form-grid">
             <section className="panel quality-card">
-              <h3>Execution workers</h3>
+              <h3>
+                {data.profile === 'production' ? 'Current workspace leases' : 'Execution workers'}
+              </h3>
+              {data.profile === 'production' && (
+                <p>
+                  Worker health and total capacity are available through the deployment's private
+                  metrics. This view shows owners of active runs in your workspace.
+                </p>
+              )}
               {data.workers.map((w: any) => (
                 <div className="quality-row" key={w.id}>
                   <Activity size={17} />
                   <span>{w.name}</span>
                   <Badge status="ready">
-                    {w.active}/{w.capacity} active steps
+                    {data.profile === 'production'
+                      ? `${w.active} active runs`
+                      : `${w.active}/${w.capacity} active steps`}
                   </Badge>
                 </div>
               ))}
               {!data.workers.length && (
-                <p>No healthy worker is connected. Queued runs wait for a worker.</p>
+                <p>
+                  {data.profile === 'production'
+                    ? 'No current workspace run holds an active worker lease.'
+                    : 'No healthy worker is connected. Queued runs wait for a worker.'}
+                </p>
               )}
             </section>
             <section className="panel quality-card">

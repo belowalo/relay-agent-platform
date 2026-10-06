@@ -176,6 +176,7 @@ export function createConnector(
       call.signal || new AbortController().signal,
       AbortSignal.timeout(timeoutMs),
     ]);
+    const resolvedSecrets = new Set();
     const authorize = async () => {
       if (signal.aborted)
         throw new ConnectorError(
@@ -207,7 +208,22 @@ export function createConnector(
       if (!ports.secrets?.resolve)
         throw new ConnectorError('UNAUTHENTICATED', 'Secret resolution is unavailable.');
       try {
-        return await ports.secrets.resolve(context, reference);
+        const value = await ports.secrets.resolve(context, reference);
+        if (typeof value === 'string' && value) {
+          resolvedSecrets.add(value);
+          // OAuth/database credentials can be structured envelopes. Protect
+          // individual values as well as the serialized envelope.
+          try {
+            const collect = (v) => {
+              if (typeof v === 'string' && v.length >= 8) resolvedSecrets.add(v);
+              else if (v && typeof v === 'object') Object.values(v).forEach(collect);
+            };
+            collect(JSON.parse(value));
+          } catch {
+            /* Plain API key. */
+          }
+        }
+        return value;
       } catch {
         throw new ConnectorError(
           'UNAUTHENTICATED',
@@ -275,7 +291,7 @@ export function createConnector(
     const perform = async () => {
       await authorize();
       try {
-        return await adapter.invoke({
+        const result = await adapter.invoke({
           context,
           config,
           action: call.action,
@@ -286,6 +302,20 @@ export function createConnector(
           ports,
           idempotencyKey: call.idempotencyKey,
         });
+        await authorize();
+        const containsCredential = (v) => {
+          if (typeof v === 'string') return [...resolvedSecrets].some((s) => v.includes(s));
+          if (Buffer.isBuffer(v) || v instanceof Uint8Array)
+            return [...resolvedSecrets].some((s) => Buffer.from(v).includes(Buffer.from(s)));
+          return v && typeof v === 'object' && Object.values(v).some(containsCredential);
+        };
+        if (containsCredential(result))
+          throw new ConnectorError(
+            'DEPENDENCY_UNAVAILABLE',
+            'Provider response echoed a credential and was withheld.',
+            { outcome: write ? 'uncertain' : 'failed' },
+          );
+        return result;
       } catch (e) {
         throw normalize(e, write);
       }

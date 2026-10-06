@@ -8,13 +8,17 @@ export async function verifyProductionBrowser({ results }) {
   const page = await context.newPage(),
     errors = [];
   page.on('pageerror', () => errors.push('Uncaught browser exception'));
+  page.on('response', (r) => {
+    if (new URL(r.url()).pathname.startsWith('/api/') && r.status() >= 400)
+      errors.push(`API ${r.status()} ${new URL(r.url()).pathname}`);
+  });
   try {
     await page.goto('https://relay.example.com/');
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await page.locator('[name=email]').fill('deploy@relay.test');
     await page.locator('[name=password]').fill('Disposable-password-2026');
     await page.locator('form').getByRole('button', { name: 'Sign in', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible({
+    await expect(page.getByRole('heading', { name: /^Welcome back,/ })).toBeVisible({
       timeout: 20000,
     });
     await page.goto('https://relay.example.com/#page=knowledge');
@@ -27,6 +31,18 @@ export async function verifyProductionBrowser({ results }) {
       page.getByText('This deployment supports private API publications.', { exact: false }),
     ).toBeVisible();
     await expect(page.getByRole('link', { name: 'Open hosted chat' })).toHaveCount(0);
+    for (const [pageId, title] of [
+      ['projects', 'Projects'],
+      ['workflows', 'Workflows'],
+      ['connections', 'Model connections'],
+      ['history', 'Run history'],
+      ['operations', 'Operations'],
+      ['settings', 'Settings'],
+    ]) {
+      await page.goto('https://relay.example.com/#page=' + pageId);
+      await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
+      await page.waitForTimeout(300);
+    }
     await page.screenshot({ path: path.join(results, 'production-browser.png'), fullPage: true });
     expect(errors).toEqual([]);
     return {

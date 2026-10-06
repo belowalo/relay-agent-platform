@@ -1123,6 +1123,8 @@ export function Team(p: PageProps) {
   );
 }
 export function WorkspaceSettings(p: PageProps & { workspace: any; onUpdate: () => void }) {
+  const { data: catalog } = useData<any>(`${p.base}/catalog`, p.notify);
+  const production = catalog?.profile === 'production';
   const { data: memories, reload: reloadMemory } = useData<any[]>(`${p.base}/memories`, p.notify);
   const { data: audit } = useData<any[]>(`${p.base}/audit`, p.notify);
   const { data: artifacts } = useData<any[]>(`${p.base}/artifacts`, p.notify);
@@ -1156,10 +1158,12 @@ export function WorkspaceSettings(p: PageProps & { workspace: any; onUpdate: () 
                     `${p.base}/settings`,
                     {
                       name,
-                      settings: {
-                        ...(p.workspace.settings || {}),
-                        historyRetentionDays: retentionDays,
-                      },
+                      settings: production
+                        ? { historyRetentionDays: 0 }
+                        : {
+                            ...(p.workspace.settings || {}),
+                            historyRetentionDays: retentionDays,
+                          },
                     },
                     'PUT',
                   );
@@ -1180,14 +1184,18 @@ export function WorkspaceSettings(p: PageProps & { workspace: any; onUpdate: () 
               </Field>
               <Field
                 label="Completed run history retention (days)"
-                hint="0 keeps history. A positive value automatically deletes expired completed, failed, and cancelled runs. Active runs and evaluation evidence are retained; documents, artifacts, and audit records remain."
+                hint={
+                  production
+                    ? 'This production deployment retains run history. Automatic deletion requires a separately qualified retention policy.'
+                    : '0 keeps history. A positive value automatically deletes expired completed, failed, and cancelled runs. Active runs and evaluation evidence are retained; documents, artifacts, and audit records remain.'
+                }
               >
                 <input
                   type="number"
                   min="0"
                   max="3650"
-                  disabled={!admin(p.role)}
-                  value={retentionDays}
+                  disabled={!admin(p.role) || production}
+                  value={production ? 0 : retentionDays}
                   onChange={(e) => setRetentionDays(Number(e.target.value))}
                 />
               </Field>
@@ -1222,7 +1230,11 @@ export function WorkspaceSettings(p: PageProps & { workspace: any; onUpdate: () 
           <div className="section-heading">
             <div>
               <h3>Agent memory</h3>
-              <p>Persistent and conversation memories are isolated to this workspace.</p>
+              <p>
+                {production
+                  ? 'These memories belong to your account in this workspace. Other users and application tokens have separate memories.'
+                  : 'Persistent and conversation memories are isolated to this workspace.'}
+              </p>
             </div>
             <Badge status="draft">{memories?.length || 0} entries</Badge>
           </div>

@@ -11,6 +11,7 @@ import { setSessionCookie } from '../security/index.js';
 import { publicRow, RuntimeError } from '../runtime/core.js';
 import { registerConnectorRoutes } from '../connectors/routes.js';
 import { registerKnowledgeRoutes } from '../knowledge/routes.js';
+import { registerProductionWorkspace } from './workspace.js';
 const uuid = () => crypto.randomUUID(),
   now = () => new Date().toISOString();
 const decode = (v) => (typeof v === 'string' ? JSON.parse(v) : v);
@@ -44,6 +45,7 @@ export function registerProductionRoutes(
     config,
     quality,
     publications,
+    documentSync,
   },
 ) {
   const route = (fn) => async (req, res, next) => {
@@ -836,6 +838,8 @@ export function registerProductionRoutes(
     }),
   );
   quality?.register(router);
+  registerProductionWorkspace(router, { database, security });
+  documentSync?.register(router);
   publications?.register(app, router);
   registerConnectorRoutes(router, {
     contextFor: async (req) => context(req),

@@ -44,12 +44,17 @@ try {
   sqlite.close();
   sqlite = undefined;
   const benchmark = JSON.parse(await fs.readFile('tests/fixtures/business/held-out.json', 'utf8'));
+  const limit = Math.min(
+    benchmark.cases.length,
+    Math.max(1, Number(process.env.LIVE_CASE_LIMIT) || benchmark.cases.length),
+  );
   const manifest = {
     commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
     benchmarkHash: hash(benchmark),
     provider: 'Groq',
     model: c.model,
-    cases: benchmark.cases.length,
+    cases: limit,
+    partial: limit !== benchmark.cases.length,
     topK: 5,
     mode: 'hybrid',
     maximumOutputTokens: 1536,
@@ -156,9 +161,10 @@ try {
     );
   }
   const retrieve = createRetriever({ repository: repo, security, embeddings });
-  for (const item of benchmark.cases) {
+  for (const item of benchmark.cases.slice(0, limit)) {
     const started = Date.now();
     let observedUsage = {},
+      rawOutput,
       streamed = 0;
     const retrieval = await retrieve(ctx, collectionId, item.question, { topK: 5, mode: 'hybrid' });
     const row = {
@@ -203,6 +209,7 @@ try {
               },
             });
             observedUsage = r.usage;
+            rawOutput = r.text;
             if (!r.usage.known) throw new Error('Unknown usage');
             await usage.settle(ctx, reservation.id, {
               tokens: r.usage.inputTokens + r.usage.outputTokens,
@@ -228,6 +235,17 @@ try {
       Object.assign(row, {
         status: 'failed',
         code: e.code || 'PROVIDER_OR_GROUNDING_FAILURE',
+        reason: [
+          'Answer provider returned invalid grounded output.',
+          'Answer provider returned inconsistent evidence status.',
+          'Answer contains an invalid or unsupported citation.',
+          'Answer claim could not be verified against its evidence.',
+        ].includes(e.message)
+          ? e.message
+          : 'Provider invocation failed',
+        // Fixed synthetic documents only; retain failed output for diagnosis and
+        // human review without exposing a key or sending it to CI.
+        ...(rawOutput ? { rejectedOutput: rawOutput.slice(0, 20000) } : {}),
         automatedExpectedTextMatch: false,
       });
     }

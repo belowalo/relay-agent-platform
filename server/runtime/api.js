@@ -96,8 +96,12 @@ export function createRuntimeApi({
     res.json(
       await repository.tx(req.context, (s) =>
         s.all(
-          'SELECT id,workflow_id,status,created_at,finished_at,error FROM relay.runs WHERE workspace_id=$1 ORDER BY created_at DESC LIMIT 1000',
-          [req.context.workspaceId],
+          "SELECT r.id,r.workflow_id,r.status,r.mode,r.usage,r.created_at,r.finished_at,r.error,w.name AS workflow_name FROM relay.runs r LEFT JOIN relay.workflows w ON w.workspace_id=r.workspace_id AND w.id=r.workflow_id WHERE r.workspace_id=$1 AND ($2='' OR r.status=$2) AND (r.id ILIKE $3 OR w.name ILIKE $3 OR r.input ILIKE $3) ORDER BY r.created_at DESC LIMIT 1000",
+          [
+            req.context.workspaceId,
+            String(req.query.status || '').slice(0, 30),
+            '%' + String(req.query.q || '').slice(0, 100) + '%',
+          ],
         ),
       ),
     ),
@@ -300,7 +304,7 @@ export function createRuntimeApi({
     res.json(
       await repository.tx(req.context, (s) =>
         s.all(
-          'SELECT id,name,workflow_id,version_id,enabled,next_at,cron_expression,timezone,last_run_id FROM relay.schedules WHERE workspace_id=$1 ORDER BY created_at',
+          'SELECT s.id,s.name,s.workflow_id,s.version_id,s.interval_minutes,s.mode,s.enabled,s.next_at,s.cron_expression,s.timezone,s.last_run_id,w.name AS workflow FROM relay.schedules s LEFT JOIN relay.workflows w ON w.workspace_id=s.workspace_id AND w.id=s.workflow_id WHERE s.workspace_id=$1 ORDER BY s.created_at',
           [req.context.workspaceId],
         ),
       ),

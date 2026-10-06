@@ -383,6 +383,16 @@ test('grounded output verifies exact quotes, citation versions, abstention and i
     assert.match(valid.text, /\[1\]/);
     assert.equal(valid.citations[0].sourceVersion, 1);
     assert.equal(valid.claims.length, 1);
+    const excerpt = await make(async (_c, p) => ({
+      insufficient: false,
+      claims: [
+        {
+          text: 'Orion requires human approval.',
+          references: [{ chunkId: p.evidence[0].chunkId, quote: p.evidence[0].text }],
+        },
+      ],
+    }))(ctx(), 'manual', 'Orion approval', { mode: 'keyword' });
+    assert.match(excerpt.text, /Orion requires human approval/);
     await assert.rejects(
       make(async () => ({
         insufficient: false,

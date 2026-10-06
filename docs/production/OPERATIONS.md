@@ -1,6 +1,6 @@
 # Production operations package
 
-Starting commit: `76649286b51b39924261a876878efebf5e02f020`; branch `codex/production-operations`. This package qualifies infrastructure and operational adapters against synthetic data. The frozen foundation still rejects the real production application. Runtime, security, knowledge and connector composition plus independent acceptance qualification are release blockers. Do not route user traffic to the qualification service.
+This is the original operations team's infrastructure package and component runbook. The application is now composed on `codex/production-integration`. Use [the integrated release operating guide](INTEGRATED-RELEASE.md) for installation, supported behavior and current release gates. `operations:qualify` below remains an infrastructure-only synthetic rehearsal. `bin/production-qualify.mjs` exercises the actual integrated application; its protocol model fixture does not prove live quality. Never route user traffic to the infrastructure qualification service.
 
 ## Install and qualify
 

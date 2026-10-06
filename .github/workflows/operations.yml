@@ -71,9 +71,9 @@ jobs:
             report_id=$(printf '%s' "$image" | sha256sum | cut -c1-12)
             docker run --rm -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/operations-results/infrastructure:/results" aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa image --format json --output "/results/$report_id.json" "$image"
           done < operations-results/infrastructure/images.txt
-          for image in relay-postgres:local relay-backup:local relay-alertmanager:local; do
-            docker run --rm -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa image --exit-code 1 --ignore-unfixed --severity HIGH,CRITICAL "$image"
-          done
+          while IFS= read -r image; do
+            docker run --rm -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa image --exit-code 1 --severity HIGH,CRITICAL "$image"
+          done < operations-results/infrastructure/images.txt
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()
         with:

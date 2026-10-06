@@ -77,6 +77,12 @@ async function isolated(buffer, extension, budgets, signal) {
       SystemRoot: process.env.SystemRoot,
       TMP: process.env.TMP,
       TEMP: process.env.TEMP,
+      // Fixed scratch home: arbitrary container UIDs need not have passwd entries.
+      // Canvas otherwise calls os.homedir() while loading system fonts and fails
+      // after the credential-free environment drops the parent's HOME.
+      HOME: os.tmpdir(),
+      DISABLE_SYSTEM_FONTS_LOAD: '1',
+      UV_THREADPOOL_SIZE: '1',
     },
   });
   try {

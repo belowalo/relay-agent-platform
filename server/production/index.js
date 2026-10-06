@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import cookieParser from 'cookie-parser';
 import { createPostgresDatabase } from '../foundation/database.js';
 import { createJobQueue } from '../foundation/queue.js';
+import { readMigrations } from '../foundation/migrations.js';
 import { productionVault } from './vault.js';
 import { PlatformError } from '../foundation/errors.js';
 import { resourceId } from '../foundation/contracts.js';
@@ -29,6 +30,8 @@ import { createProductionParser } from './parser.js';
 import { startOperationsSampler } from '../observability/sampler.js';
 import { createProductionQuality } from './quality.js';
 import { createProductionPublications } from './publications.js';
+import { createProductionMemory } from './memory.js';
+import { createProductionDocumentSync } from './document-sync.js';
 const parse = (value) => (typeof value === 'string' ? JSON.parse(value) : value);
 export function runtimePermission(operation) {
   if (['recover', 'reconcile', 'admin'].includes(operation.operation)) return 'workspace.manage';
@@ -87,6 +90,24 @@ export async function createRuntimePorts({ config, env = process.env }) {
       },
     );
     const vault = productionVault(config, env);
+    const manifest = await readMigrations();
+    await database.transaction(
+      {
+        workspaceId: 'startup',
+        actor: { kind: 'service', id: 'schema-check' },
+        requestId: 'schema-check',
+      },
+      async (s) => {
+        const applied = new Map(
+          (await s.all('SELECT name,checksum FROM relay.schema_migrations')).map((r) => [
+            r.name,
+            r.checksum,
+          ]),
+        );
+        if (manifest.some((m) => applied.get(m.name) !== m.checksum))
+          throw new Error('RELEASE_SCHEMA_REQUIRED');
+      },
+    );
     let security;
     const tableFor = {
       workflow: 'workflows',
@@ -225,6 +246,16 @@ export async function createRuntimePorts({ config, env = process.env }) {
         database: () => database.probe(),
         queue: () => queue.probe(),
         storage: () => blobs.probe(),
+        ...(env.PARSER_ENDPOINT
+          ? {
+              parser: async () => {
+                const r = await fetch(new URL('/health/ready', env.PARSER_ENDPOINT), {
+                  signal: AbortSignal.timeout(2000),
+                });
+                return r.ok && (await r.json()).ready === true;
+              },
+            }
+          : {}),
         ...(identityPool
           ? {
               identity: async () => !!(await identityPool.query('SELECT 1')).rows.length,
@@ -234,6 +265,19 @@ export async function createRuntimePorts({ config, env = process.env }) {
       },
     });
     let quality;
+    const documentSync = createProductionDocumentSync({
+      database,
+      security,
+      connections,
+      connectorPorts: toolPortsConnector,
+      outbound,
+      pipeline,
+      knowledgeRepository,
+      blobs,
+    });
+    function toolPortsConnector(...args) {
+      return toolPorts.connectorPorts(...args);
+    }
     async function modelCall(ctx, { config: options, messages, tools = [], signal, meteredCall }) {
       await security.authorize(ctx, 'run.execute');
       const connection = await database.transaction(ctx, (s) =>
@@ -424,33 +468,7 @@ export async function createRuntimePorts({ config, env = process.env }) {
           };
         },
       },
-      memory: {
-        async read(ctx, q) {
-          await security.authorize(ctx, 'run.execute');
-          return database.transaction(ctx, (s) =>
-            s.all(
-              'SELECT content FROM relay.memories WHERE workspace_id=$1 AND agent_id=$2 AND ($3::text IS NULL OR conversation_id=$3) ORDER BY created_at DESC LIMIT $4',
-              [ctx.workspaceId, q.agentId, q.conversationId || null, Math.min(30, q.limit || 6)],
-            ),
-          );
-        },
-        async write(ctx, q) {
-          await security.authorize(ctx, 'run.execute');
-          await database.transaction(ctx, (s) =>
-            s.query(
-              'INSERT INTO relay.memories(id,workspace_id,agent_id,conversation_id,content,created_at) VALUES($1,$2,$3,$4,$5,$6)',
-              [
-                crypto.randomUUID(),
-                ctx.workspaceId,
-                q.agentId,
-                q.conversationId || null,
-                JSON.stringify(q.messages || q.content),
-                new Date().toISOString(),
-              ],
-            ),
-          );
-        },
-      },
+      memory: createProductionMemory({ database, security }),
       installMiddleware(app) {
         app.set('trust proxy', 1);
         app.use(
@@ -486,6 +504,7 @@ export async function createRuntimePorts({ config, env = process.env }) {
           config,
           quality,
           publications,
+          documentSync,
         });
         registerOperations(app, { health, telemetry, metricsToken: env.METRICS_TOKEN });
         health.start();
@@ -501,9 +520,11 @@ export async function createRuntimePorts({ config, env = process.env }) {
       },
       jobHandlers: {
         'source.ingest': (job) => pipeline.handleJob(job, { resolveContext: resolveIngestion }),
+        'connector.sync': (job) => documentSync.handle(job),
       },
       async maintenance(ctx) {
         await quality?.pump(ctx);
+        await documentSync.recover(ctx);
         await database.transaction(ctx, (s) =>
           s.query(
             `UPDATE relay.job_outbox o SET state='pending',available_at=now(),lease_owner=NULL,lease_until=NULL

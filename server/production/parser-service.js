@@ -52,7 +52,17 @@ app.post('/parse', async (req, res) => {
         signal: AbortSignal.timeout(30000),
       }),
     );
-  } catch {
+  } catch (error) {
+    // Allowlisted classification only: document text and parser exceptions may
+    // contain private input and must not be emitted to shared logs.
+    console.error(
+      JSON.stringify({
+        event: 'parser_rejected',
+        code: ['VALIDATION_ERROR', 'BUDGET_EXCEEDED', 'DEPENDENCY_UNAVAILABLE'].includes(error.code)
+          ? error.code
+          : 'PARSER_FAILURE',
+      }),
+    );
     res.status(422).json({ error: 'Document could not be processed within the allowed budgets.' });
   } finally {
     active = false;

@@ -23,8 +23,13 @@ export function createPostgresDatabase(config, { pool } = {}) {
     try {
       await client.query('BEGIN');
       await client.query(
-        "SELECT set_config('relay.workspace_id', $1, true), set_config('statement_timeout', $2, true), set_config('lock_timeout', $3, true)",
-        [context.workspaceId, String(config.statementTimeoutMs), String(config.databaseTimeoutMs)],
+        "SELECT set_config('relay.workspace_id', $1, true), set_config('statement_timeout', $2, true), set_config('lock_timeout', $3, true), set_config('relay.principal', $4, true)",
+        [
+          context.workspaceId,
+          String(config.statementTimeoutMs),
+          String(config.databaseTimeoutMs),
+          `${context.actor.kind}:${context.actor.id}`,
+        ],
       );
       const session = Object.freeze({
         context,
