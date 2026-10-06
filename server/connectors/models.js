@@ -187,6 +187,10 @@ export async function callModel({
   ]);
   const anthropic = provider === 'anthropic',
     model = config.model;
+  // Groq's schema mode supports neither streaming nor simultaneous tool selection.
+  if (config.outputSchema && tools.length && new URL(endpoint).hostname === 'api.groq.com')
+    throw invalid('Groq structured output requires a separate call without tools.');
+  const buffered = !anthropic && !!config.outputSchema;
   const toolSchema = (t) => t.config?.inputSchema || { type: 'object', properties: {} };
   const body = anthropic
     ? {
@@ -241,8 +245,8 @@ export async function callModel({
         messages,
         temperature: Number(config.temperature ?? 0.4),
         max_tokens: Number(config.maxTokens || 2048),
-        stream: true,
-        ...(caps.usage ? { stream_options: { include_usage: true } } : {}),
+        stream: !buffered,
+        ...(!buffered && caps.usage ? { stream_options: { include_usage: true } } : {}),
         ...(tools.length
           ? {
               tools: tools.map((t) => ({
@@ -288,6 +292,62 @@ export async function callModel({
     done = false;
   const calls = new Map();
   try {
+    if (buffered) {
+      if (!response.headers.get('content-type')?.includes('application/json'))
+        throw new ConnectorError(
+          'DEPENDENCY_UNAVAILABLE',
+          'Model returned an unsupported response content type.',
+        );
+      const result = JSON.parse(await responseText(response, 4_000_000));
+      signal.throwIfAborted();
+      const choice = result.choices?.[0],
+        message = choice?.message;
+      if (
+        result.error ||
+        message?.refusal ||
+        !['stop', 'tool_calls'].includes(choice?.finish_reason)
+      )
+        throw new ConnectorError(
+          'DEPENDENCY_UNAVAILABLE',
+          'Model response is incomplete, truncated or refused; no tool actions were returned.',
+        );
+      text = message?.content ?? '';
+      if (typeof text !== 'string' || text.length > 2_000_000)
+        throw invalid('Model output exceeds the response limit.');
+      if (result.usage)
+        usage = {
+          inputTokens: tokens(result.usage.prompt_tokens),
+          outputTokens: tokens(result.usage.completion_tokens),
+          cachedInputTokens: tokens(result.usage.prompt_tokens_details?.cached_tokens || 0),
+          reasoningTokens: tokens(result.usage.completion_tokens_details?.reasoning_tokens || 0),
+        };
+      if ((message?.tool_calls?.length || 0) > 128)
+        throw invalid('Model output exceeds the response limit.');
+      for (const [index, call] of (message?.tool_calls || []).entries())
+        calls.set(index, {
+          id: call.id,
+          name: call.function?.name,
+          arguments: call.function?.arguments,
+        });
+      const toolCalls = toolResult(calls, tools);
+      if ((choice.finish_reason === 'tool_calls') !== !!toolCalls.length)
+        throw new ConnectorError(
+          'DEPENDENCY_UNAVAILABLE',
+          'Model completion does not match its tool results.',
+        );
+      const output = toolCalls.length ? undefined : structured(text, config.outputSchema);
+      // Publish a validated complete result; this is not a synthetic token stream.
+      if (text) onToken(text);
+      return {
+        text,
+        toolCalls,
+        usage: { ...usage, known: usage.inputTokens !== null && usage.outputTokens !== null },
+        ...(output !== undefined ? { structuredOutput: output } : {}),
+        providerRequestId:
+          response.headers.get('x-request-id') || response.headers.get('request-id'),
+        finishReason: choice.finish_reason,
+      };
+    }
     for await (const f of modelSse(response, signal)) {
       if (f.type === 'relay_done') {
         done = true;

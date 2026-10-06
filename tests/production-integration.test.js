@@ -14,6 +14,25 @@ import { sqliteFixture } from './helpers/runtime-fixtures.js';
 import { runtimePermission } from '../server/production/index.js';
 import { assertNoInlineSecrets } from '../server/production/routes.js';
 import { DatabaseSync } from 'node:sqlite';
+
+test('query POSTs require document read while source mutations retain write permission', () => {
+  for (const path of ['/collections/collection/search', '/collections/collection/retrieve'])
+    assert.equal(runtimePermission({ operation: 'api', method: 'POST', path }), 'document.read');
+  for (const path of [
+    '/collections/collection/upload',
+    '/collections/collection/website',
+    '/sources/source/reindex',
+  ])
+    assert.equal(runtimePermission({ operation: 'api', method: 'POST', path }), 'workflow.write');
+  assert.equal(
+    runtimePermission({
+      operation: 'api',
+      method: 'DELETE',
+      path: '/collections/collection/search',
+    }),
+    'workflow.write',
+  );
+});
 test('combined migration and import: dry-run rolls back, IDs/credentials survive, and actual SQL roles deny identity secrets', async () => {
   const pg = new PGlite({ extensions: { vector } });
   const query = async (sql, args) => {

@@ -31,7 +31,7 @@ groups:
         labels: { severity: warning }
         annotations: { summary: Oldest waiting job exceeds two minutes }
       - alert: RelayWorkerStale
-        expr: relay_worker_heartbeat_age_seconds > 60
+        expr: relay_worker_heartbeat_age_seconds > 60 or relay_workers_alive == 0
         for: 1m
         labels: { severity: critical }
         annotations: { summary: Worker heartbeat stale }

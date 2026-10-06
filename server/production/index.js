@@ -41,6 +41,12 @@ export function runtimePermission(operation) {
     throw new PlatformError('FORBIDDEN', 'Unknown runtime operation.');
   const read = ['GET', 'HEAD'].includes(operation.method);
   const path = operation.path || '';
+  // Read-only retrieval carries a query body; its HTTP verb does not grant write authority.
+  if (
+    operation.method === 'POST' &&
+    /^\/collections\/[a-zA-Z0-9_-]{1,128}\/(search|retrieve)$/.test(path)
+  )
+    return 'document.read';
   if (/^\/(runtime|dead-letters|actions)/.test(path)) return 'workspace.manage';
   if (/^\/approvals/.test(path)) return 'run.approve';
   if (/^\/runs/.test(path)) return read ? 'run.read' : 'run.execute';
@@ -511,6 +517,7 @@ export async function createRuntimePorts({ config, env = process.env }) {
         stopSampler = startOperationsSampler({
           telemetry,
           queueStats: () => queue.stats(),
+          workerStats: () => queue.workerStats(),
           dependencyReady: async () => (await health.ready()).ready,
         });
       },

@@ -25,10 +25,13 @@ export function startOperationsSampler({
       }
       const worker = await workerStats?.();
       if (worker) {
+        telemetry.gauge('workers_alive', worker.alive);
         telemetry.gauge('worker_active', worker.active);
         telemetry.gauge(
           'worker_heartbeat_age_seconds',
-          Math.max(0, (Date.now() - Date.parse(worker.heartbeatAt)) / 1000),
+          worker.heartbeatAt
+            ? Math.max(0, (Date.now() - Date.parse(worker.heartbeatAt)) / 1000)
+            : 120,
         );
       }
       if (dependencyReady) telemetry.gauge('dependency_ready', (await dependencyReady()) ? 1 : 0);

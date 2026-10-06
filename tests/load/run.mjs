@@ -157,6 +157,8 @@ try {
       const states = await Promise.all(
         workspaces.map((w) => w.owner.ok(`${w.base}/collections/${w.collection.id}/sources`)),
       );
+      const failed = states.flat().filter((source) => source.status === 'failed');
+      assert.equal(failed.length, 0, `Synthetic corpus indexing failed: ${JSON.stringify(failed)}`);
       return states.flat().every((source) => source.status === 'ready');
     },
     Math.max(60000, profile.documents * 200),

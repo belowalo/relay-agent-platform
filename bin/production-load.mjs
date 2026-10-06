@@ -13,8 +13,8 @@ export async function measureProductionWorkload({
   progress,
 }) {
   const stats = {
-      api: { latencies: [], offered: 0, completed: 0, errors: 0 },
-      retrieval: { latencies: [], offered: 0, completed: 0, errors: 0 },
+      api: { latencies: [], offered: 0, completed: 0, errors: 0, failures: {} },
+      retrieval: { latencies: [], offered: 0, completed: 0, errors: 0, failures: {} },
     },
     resources = [];
   const pending = new Set();
@@ -35,8 +35,11 @@ export async function measureProductionWorkload({
         undefined,
         cookie,
       );
-      if (!v.r.ok || (kind === 'retrieval' && !v.data.evidence?.length)) s.errors++;
-      else s.completed++;
+      if (!v.r.ok || (kind === 'retrieval' && !v.data.evidence?.length)) {
+        s.errors++;
+        const code = !v.r.ok ? `http_${v.r.status}` : 'missing_evidence';
+        s.failures[code] = (s.failures[code] || 0) + 1;
+      } else s.completed++;
     } catch {
       s.errors++;
     } finally {
@@ -104,6 +107,7 @@ export async function measureProductionWorkload({
       offered: s.offered,
       completed: s.completed,
       unexpectedErrors: s.errors,
+      failureCounts: s.failures,
       p95Ms: p95(s.latencies),
       offeredRate: s.offered / durationSeconds,
       achievedRate: s.completed / durationSeconds,

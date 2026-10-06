@@ -201,6 +201,30 @@ test(
       const persistedResult = await cleanup.hget(`${prefix}:jobs:${reference.id}`, 'returnvalue');
       assert.ok(persistedResult && !persistedResult.includes('private-worker-result'));
       assert.deepEqual(JSON.parse(persistedResult), { id: reference.id });
+      assert.equal((await queue.workerStats()).alive, 0);
+      let recovered = 0;
+      const recoveryWorker = queue.createWorker(async () => {
+        recovered++;
+      });
+      async function settled(key, expected) {
+        for (let attempt = 0; attempt < 100; attempt++) {
+          if ((await cleanup.hget(key, 'returnvalue')) && recovered === expected) return;
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        assert.fail('authoritative ingestion/sync redelivery did not complete');
+      }
+      for (const kind of ['source.ingest', 'connector.sync']) {
+        const notification = { ...job('workspace-a'), kind };
+        const key = `${prefix}:jobs:${notification.id}`;
+        const before = recovered;
+        await queue.publish(notification);
+        await settled(key, before + 1);
+        await queue.publish(notification);
+        await settled(key, before + 2);
+      }
+      assert.equal((await queue.workerStats()).alive, 1);
+      await recoveryWorker.close();
+      assert.equal((await queue.workerStats()).alive, 0);
     } finally {
       await queue.close();
       let cursor = '0';

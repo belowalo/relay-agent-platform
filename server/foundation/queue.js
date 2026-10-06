@@ -1,5 +1,6 @@
 import { Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
+import { randomUUID } from 'node:crypto';
 import { jobSchema } from './contracts.js';
 import { PlatformError } from './errors.js';
 
@@ -15,6 +16,7 @@ export function createJobQueue(config, { onError = () => {} } = {}) {
   const queue = new Queue('jobs', { connection: producerConnection, prefix: config.queuePrefix });
   queue.on('error', () => onError('queue.producer'));
   const workers = new Set();
+  const heartbeatKey = `${config.queuePrefix}:worker-heartbeats`;
   let closing;
   async function bounded(operation, milliseconds = config.databaseTimeoutMs) {
     let timer;
@@ -49,7 +51,7 @@ export function createJobQueue(config, { onError = () => {} } = {}) {
       // PG outbox recovery owns redelivery. Queue completion is not durable business state.
       await bounded(async () => {
         await queue.waitUntilReady();
-        if (job.kind === 'source.ingest') {
+        if (['source.ingest', 'connector.sync'].includes(job.kind)) {
           const previous = await queue.getJob(job.id);
           if (previous && ['completed', 'failed'].includes(await previous.getState()))
             await previous.remove();
@@ -80,7 +82,26 @@ export function createJobQueue(config, { onError = () => {} } = {}) {
         };
       });
     },
+    async workerStats() {
+      return bounded(async () => {
+        await queue.waitUntilReady();
+        const now = Date.now();
+        await producerConnection.zremrangebyscore(heartbeatKey, '-inf', now - 600000);
+        const alive = await producerConnection.zcount(heartbeatKey, now - 15000, '+inf');
+        const newest = await producerConnection.zrevrange(heartbeatKey, 0, 0, 'WITHSCORES');
+        const counts = await queue.getJobCounts('active');
+        return {
+          alive,
+          active: counts.active,
+          heartbeatAt: newest.length ? new Date(Number(newest[1])).toISOString() : null,
+        };
+      });
+    },
     createWorker(handler) {
+      const workerId = randomUUID();
+      let heartbeatTimer,
+        heartbeating = false,
+        stopped = false;
       const workerConnection = new Redis(config.redisUrl, {
         maxRetriesPerRequest: null,
         enableOfflineQueue: true,
@@ -108,11 +129,36 @@ export function createJobQueue(config, { onError = () => {} } = {}) {
         },
       );
       worker.on('error', () => onError('queue.worker'));
+      async function heartbeat() {
+        if (stopped || heartbeating || !worker.isRunning() || worker.isPaused()) return;
+        heartbeating = true;
+        try {
+          await bounded(async () => {
+            await queue.waitUntilReady();
+            await producerConnection.zadd(heartbeatKey, Date.now(), workerId);
+            await producerConnection.zremrangebyscore(heartbeatKey, '-inf', Date.now() - 600000);
+          });
+        } catch {
+          onError('queue.worker.heartbeat');
+        } finally {
+          heartbeating = false;
+        }
+      }
+      worker.on('ready', () => {
+        if (stopped || heartbeatTimer) return;
+        heartbeatTimer = setInterval(heartbeat, 5000);
+        heartbeatTimer.unref();
+        heartbeat();
+      });
       const handle = {
         async close() {
+          stopped = true;
+          clearInterval(heartbeatTimer);
           try {
             await bounded(() => worker.close(), config.shutdownTimeoutMs);
           } finally {
+            // Expiry still detects a killed process or an unavailable Redis connection.
+            await bounded(() => producerConnection.zrem(heartbeatKey, workerId)).catch(() => {});
             workerConnection.disconnect();
             workers.delete(handle);
           }

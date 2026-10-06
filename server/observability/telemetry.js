@@ -177,6 +177,7 @@ export function createTelemetry({
           'queue_waiting',
           'worker_heartbeat_age_seconds',
           'worker_active',
+          'workers_alive',
           'dependency_ready',
           'backup_age_seconds',
           'disk_free_bytes',

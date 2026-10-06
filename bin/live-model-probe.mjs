@@ -9,7 +9,7 @@ const report = {
   commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
   live: true,
   scope:
-    'Two synthetic questions against a real provider adapter. Not a deployed workflow or held-out document-quality qualification.',
+    'Three synthetic questions against a real provider adapter. Not a deployed workflow or held-out document-quality qualification.',
   checks: [],
 };
 let db;
@@ -39,6 +39,17 @@ try {
         },
       ],
       valid: (r) => r.text.trim() === '33',
+    },
+    {
+      name: 'structured-json-usage',
+      messages: [{ role: 'user', content: 'Return JSON with ticketsLeft equal to 33.' }],
+      outputSchema: {
+        type: 'object',
+        properties: { ticketsLeft: { type: 'integer' } },
+        required: ['ticketsLeft'],
+        additionalProperties: false,
+      },
+      valid: (r) => r.structuredOutput?.ticketsLeft === 33,
     },
     {
       name: 'tool-selection-schema',
@@ -75,7 +86,12 @@ try {
         provider: c.provider,
         endpoint: c.endpoint,
         secret,
-        config: { model: c.model, maxTokens: 512, temperature: 0 },
+        config: {
+          model: c.model,
+          maxTokens: 512,
+          temperature: 0,
+          ...(i.outputSchema ? { outputSchema: i.outputSchema } : {}),
+        },
         messages: i.messages,
         tools: i.tools || [],
         signal: AbortSignal.timeout(45000),

@@ -33,7 +33,7 @@ const usage = {
     completion_tokens_details: { reasoning_tokens: 1 },
   },
 };
-test('OpenAI fragmented CRLF streaming returns text, usage, request correlation and structured schema', async () => {
+test('OpenAI schema mode buffers and validates a complete JSON response with reported usage', async () => {
   let body;
   const outputSchema = {
     type: 'object',
@@ -50,11 +50,19 @@ test('OpenAI fragmented CRLF streaming returns text, usage, request correlation 
     },
     fetchImpl: async (u, o) => {
       body = JSON.parse(o.body);
-      return sse([{ choices: [{ delta: { content: '{"ok":true}' } }] }, finish, usage]);
+      return Response.json(
+        {
+          choices: [{ message: { content: '{"ok":true}' }, finish_reason: 'stop' }],
+          usage: usage.usage,
+        },
+        { headers: { 'x-request-id': 'request-fixture' } },
+      );
     },
   });
   assert.equal(body.response_format.type, 'json_schema');
   assert.equal(body.response_format.json_schema.strict, true);
+  assert.equal(body.stream, false);
+  assert.equal(body.stream_options, undefined);
   assert.deepEqual(result.structuredOutput, { ok: true });
   assert.equal(emitted, '{"ok":true}');
   assert.equal(result.usage.inputTokens, 12);
@@ -105,6 +113,52 @@ test('tool argument fragments are assembled, checked against granted tool schema
   });
   assert.equal(progress, 4);
   assert.deepEqual(result.toolCalls[0].arguments, { q: 'hello' });
+});
+
+test('buffered schema output rejects refusal, truncation, invalid schema and unexpected tools before publishing content', async () => {
+  const outputSchema = {
+    type: 'object',
+    properties: { ok: { type: 'boolean' } },
+    required: ['ok'],
+    additionalProperties: false,
+  };
+  for (const choice of [
+    { message: { content: '{"ok":true}', refusal: 'no' }, finish_reason: 'stop' },
+    { message: { content: '{"ok":true}' }, finish_reason: 'length' },
+    { message: { content: '{"ok":"wrong"}' }, finish_reason: 'stop' },
+    { message: { content: '{' }, finish_reason: 'stop' },
+    {
+      message: {
+        content: '',
+        tool_calls: [{ id: 'call', function: { name: 'unknown', arguments: '{}' } }],
+      },
+      finish_reason: 'tool_calls',
+    },
+  ]) {
+    let published = false;
+    await assert.rejects(
+      callModel({
+        ...args,
+        config: { ...args.config, outputSchema },
+        onToken: () => {
+          published = true;
+        },
+        fetchImpl: async () => Response.json({ choices: [choice], usage: usage.usage }),
+      }),
+    );
+    assert.equal(published, false);
+  }
+  await assert.rejects(
+    callModel({
+      ...args,
+      endpoint: 'https://api.groq.com/openai/v1',
+      config: { ...args.config, outputSchema },
+      tools: [{ id: 'lookup', config: { inputSchema: { type: 'object' } } }],
+      fetchImpl: async () =>
+        assert.fail('unsupported combination must fail before a billable request'),
+    }),
+    /separate call without tools/,
+  );
 });
 test('partial response, truncated finish, malformed tool JSON, unsupported capabilities and refusals fail closed', async () => {
   await assert.rejects(
