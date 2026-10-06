@@ -301,6 +301,10 @@ test(
         400,
       );
       evidence.checks.push('real adapter protocol, durable dispatch, model reservation settlement');
+      const operations = (await request(base + '/operations')).data;
+      assert.equal(operations.workerFleet.alive, 2);
+      assert.ok(operations.workerFleet.heartbeatAt);
+      assert.deepEqual(Object.keys(operations.workerFleet).sort(), ['alive', 'heartbeatAt']);
       const preview = await request(base + '/workflows/' + wf.data.id + '/runs', {
         input: 'Preview makes no paid call',
         mode: 'preview',

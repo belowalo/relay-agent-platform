@@ -540,6 +540,19 @@ try {
       cookies,
       durationSeconds: env.PRODUCTION_SOAK === 'true' ? 3600 : 120,
       sampleResources,
+      executeWorkflow: async () => {
+        const id = expect(
+          await request(`/api/w/${workspace}/workflows/${workflowId}/runs`, {
+            input: 'Synthetic provider workload dispatch check',
+            mode: 'live',
+          }),
+          202,
+        ).id;
+        return until(async () => {
+          const r = expect(await request(`/api/w/${workspace}/runs/${id}`), 200);
+          return ['completed', 'failed', 'cancelled'].includes(r.status) && r;
+        }, 30000);
+      },
       progress: (v) => console.log(JSON.stringify({ workloadProgress: v })),
     });
     await fs.writeFile(
@@ -685,15 +698,16 @@ try {
       'One-host quiesced database, identity, credential, vectors and S3 backup; no off-host copy or two-host failover claim';
   });
   await drill('prior-code-rollback-on-migrated-database', async () => {
-    const prior = '555a53ccd9d03a28cf7ecb91f1f209b21dbec154';
+    const prior = '54d43d3c5b549172ab0e31f6b58da450abf08bd5';
     await run('git', ['fetch', '--depth=1', 'origin', prior]);
     const directory = path.join(root, 'prior-code');
     await fs.mkdir(directory);
     const archive = path.join(root, 'prior-code.tar');
     await run('git', ['archive', '--format=tar', '--output', archive, prior]);
     await run('tar', ['-xf', archive, '-C', directory]);
-    // Rebuild prior application code on the current hardened runtime base, since
-    // the original prior database image has known vulnerabilities. Record both.
+    // Rebuild actual prior application code using the current hardened build
+    // recipe. Keep migrated infrastructure and record distinct application IDs;
+    // this proves code compatibility, not a SQL downgrade or an old image's safety.
     await fs.copyFile('deploy/Dockerfile', path.join(directory, 'deploy/Dockerfile'));
     const image = project + '-prior';
     await run('docker', [

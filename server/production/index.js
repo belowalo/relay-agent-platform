@@ -511,6 +511,7 @@ export async function createRuntimePorts({ config, env = process.env }) {
           quality,
           publications,
           documentSync,
+          workerStats: () => queue.workerStats(),
         });
         registerOperations(app, { health, telemetry, metricsToken: env.METRICS_TOKEN });
         health.start();

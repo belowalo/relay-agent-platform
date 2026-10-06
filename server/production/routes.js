@@ -48,6 +48,7 @@ export function registerProductionRoutes(
     quality,
     publications,
     documentSync,
+    workerStats,
   },
 ) {
   const route = (fn) => async (req, res, next) => {
@@ -913,7 +914,7 @@ export function registerProductionRoutes(
     }),
   );
   quality?.register(router);
-  registerProductionWorkspace(router, { database, security });
+  registerProductionWorkspace(router, { database, security, workerStats });
   documentSync?.register(router);
   publications?.register(app, router);
   registerConnectorRoutes(router, {

@@ -671,9 +671,13 @@ export function Operations(p: PageProps) {
         <>
           <section className="quality-metrics panel">
             <div>
-              <strong>{data.workers.length}</strong>
+              <strong>
+                {data.profile === 'production'
+                  ? (data.workerFleet?.alive ?? 'Unknown')
+                  : data.workers.length}
+              </strong>
               <small>
-                {data.profile === 'production' ? 'Active lease owners' : 'Healthy workers'}
+                {data.profile === 'production' ? 'Healthy fleet workers' : 'Healthy workers'}
               </small>
             </div>
             <div>
@@ -696,8 +700,8 @@ export function Operations(p: PageProps) {
               </h3>
               {data.profile === 'production' && (
                 <p>
-                  Worker health and total capacity are available through the deployment's private
-                  metrics. This view shows owners of active runs in your workspace.
+                  Fleet health reflects shared worker heartbeats. The leases below belong to this
+                  workspace; a healthy worker count does not establish available execution capacity.
                 </p>
               )}
               {data.workers.map((w: any) => (

@@ -11,12 +11,14 @@ export async function measureProductionWorkload({
   durationSeconds,
   sampleResources,
   progress,
+  executeWorkflow,
 }) {
   const stats = {
       api: { latencies: [], offered: 0, completed: 0, errors: 0, failures: {} },
       retrieval: { latencies: [], offered: 0, completed: 0, errors: 0, failures: {} },
     },
-    resources = [];
+    resources = [],
+    dispatch = { runs: [], errors: 0 };
   const pending = new Set();
   const start = performance.now(),
     end = start + durationSeconds * 1000;
@@ -74,6 +76,27 @@ export async function measureProductionWorkload({
       sampling = false;
     }
   }
+  async function workflows() {
+    if (!executeWorkflow) return;
+    let due = start;
+    while (performance.now() < end) {
+      await sleep(Math.max(0, due - performance.now()));
+      if (performance.now() >= end) break;
+      due += 10000;
+      try {
+        const run = await executeWorkflow();
+        const firstStep = Math.min(
+          ...run.steps.filter((s) => s.started_at).map((s) => Date.parse(s.started_at)),
+        );
+        const dispatchMs = firstStep - Date.parse(run.created_at);
+        if (run.status !== 'completed' || !Number.isFinite(dispatchMs) || dispatchMs < 0)
+          dispatch.errors++;
+        dispatch.runs.push({ id: run.id, status: run.status, dispatchMs });
+      } catch {
+        dispatch.errors++;
+      }
+    }
+  }
   await sample();
   const timer = setInterval(() => sample().catch(() => {}), 15000),
     notices = setInterval(
@@ -86,8 +109,9 @@ export async function measureProductionWorkload({
       60000,
     );
   try {
-    await Promise.all([generate('api', 20), generate('retrieval', 10)]);
+    await Promise.all([generate('api', 20), generate('retrieval', 10), workflows()]);
     await Promise.all(pending);
+    while (sampling) await sleep(20);
     await sample();
   } finally {
     clearInterval(timer);
@@ -119,6 +143,22 @@ export async function measureProductionWorkload({
       result[kind].achievedRate >= targetRate * 0.95;
   }
   result.maxQueueWaiting = Math.max(...resources.map((s) => s.queueWaiting ?? Infinity));
+  result.dispatch = {
+    ...dispatch,
+    p95Ms: p95(dispatch.runs.map((r) => r.dispatchMs)),
+    configuredIntervalSeconds: 10,
+    configuredConcurrentClients: 1,
+    remainingActiveRuns: dispatch.runs.filter((r) =>
+      ['queued', 'running', 'waiting'].includes(r.status),
+    ).length,
+  };
+  result.dispatch.passed =
+    !executeWorkflow ||
+    (result.dispatch.runs.length >= (durationSeconds / 10) * 0.9 &&
+      result.dispatch.p95Ms !== null &&
+      result.dispatch.p95Ms <= 2000 &&
+      !result.dispatch.errors &&
+      !result.dispatch.remainingActiveRuns);
   result.memoryGrowth = {};
   const window = resources.filter((s) => s.elapsedSeconds >= Math.max(0, durationSeconds - 1800));
   if (durationSeconds >= 3600 && window.length >= 8)
@@ -132,8 +172,10 @@ export async function measureProductionWorkload({
     result.api.passed &&
     result.retrieval.passed &&
     result.maxQueueWaiting <= 50 &&
+    result.dispatch.passed &&
+    (durationSeconds < 3600 || Object.keys(result.memoryGrowth).length === 4) &&
     Object.values(result.memoryGrowth).every((v) => Number.isFinite(v) && v < 0.1);
   result.scope =
-    'One host, eight load users, small actually ingested corpus. This does not qualify the declared two-host/100-user/50,000-chunk profile.';
+    'One host, eight read-load users and one sequential workflow issuer, small actually ingested corpus. Workflow dispatch uses a synthetic provider. This does not qualify the declared two-host/100-user/25-concurrent-run/50,000-chunk profile.';
   return result;
 }

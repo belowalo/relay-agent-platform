@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { resourceId } from '../foundation/contracts.js';
 import { PlatformError } from '../foundation/errors.js';
 import { writeAudit } from '../security/audit.js';
-export function registerProductionWorkspace(router, { database, security }) {
+export function registerProductionWorkspace(router, { database, security, workerStats }) {
   const tx = (req, fn) => database.transaction(req.context, fn);
   const route = (permission, fn) => async (req, res, next) => {
     try {
@@ -173,44 +173,49 @@ export function registerProductionWorkspace(router, { database, security }) {
   );
   router.get(
     '/operations',
-    route('workspace.manage', async (req, res) =>
-      res.json(
-        await tx(req, async (s) => {
-          const wid = req.context.workspaceId;
-          const rows = await s.all(
-            "SELECT status,active_ms FROM relay.runs WHERE workspace_id=$1 AND created_at >= to_char((now()-interval '7 days') AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS') ORDER BY created_at DESC LIMIT 10000",
+    route('workspace.manage', async (req, res) => {
+      const data = await tx(req, async (s) => {
+        const wid = req.context.workspaceId;
+        const rows = await s.all(
+          "SELECT status,active_ms FROM relay.runs WHERE workspace_id=$1 AND created_at >= to_char((now()-interval '7 days') AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS') ORDER BY created_at DESC LIMIT 10000",
+          [wid],
+        );
+        const terminal = rows.filter((r) =>
+          ['completed', 'failed', 'cancelled'].includes(r.status),
+        );
+        const times = terminal.map((r) => Number(r.active_ms)).sort((a, b) => a - b);
+        return {
+          profile: 'production',
+          metrics: {
+            runs: rows.length,
+            successRate: terminal.length
+              ? terminal.filter((r) => r.status === 'completed').length / terminal.length
+              : 0,
+            p95Ms: times.length ? times[Math.ceil(times.length * 0.95) - 1] : 0,
+            truncated: rows.length === 10000,
+          },
+          workers: await s.all(
+            "SELECT lease_owner AS id,lease_owner AS name,count(*)::int AS active FROM relay.runs WHERE workspace_id=$1 AND status='running' AND lease_until>(extract(epoch from clock_timestamp())*1000)::bigint GROUP BY lease_owner",
             [wid],
-          );
-          const terminal = rows.filter((r) =>
-            ['completed', 'failed', 'cancelled'].includes(r.status),
-          );
-          const times = terminal.map((r) => Number(r.active_ms)).sort((a, b) => a - b);
-          return {
-            profile: 'production',
-            metrics: {
-              runs: rows.length,
-              successRate: terminal.length
-                ? terminal.filter((r) => r.status === 'completed').length / terminal.length
-                : 0,
-              p95Ms: times.length ? times[Math.ceil(times.length * 0.95) - 1] : 0,
-              truncated: rows.length === 10000,
-            },
-            workers: await s.all(
-              "SELECT lease_owner AS id,lease_owner AS name,count(*)::int AS active FROM relay.runs WHERE workspace_id=$1 AND status='running' AND lease_until>(extract(epoch from clock_timestamp())*1000)::bigint GROUP BY lease_owner",
-              [wid],
-            ),
-            queue: await s.all(
-              'SELECT status,count(*)::int AS count FROM relay.runs WHERE workspace_id=$1 GROUP BY status',
-              [wid],
-            ),
-            failures: await s.all(
-              "SELECT id,error FROM relay.runs WHERE workspace_id=$1 AND status='failed' ORDER BY created_at DESC LIMIT 20",
-              [wid],
-            ),
-          };
-        }),
-      ),
-    ),
+          ),
+          queue: await s.all(
+            'SELECT status,count(*)::int AS count FROM relay.runs WHERE workspace_id=$1 GROUP BY status',
+            [wid],
+          ),
+          failures: await s.all(
+            "SELECT id,error FROM relay.runs WHERE workspace_id=$1 AND status='failed' ORDER BY created_at DESC LIMIT 20",
+            [wid],
+          ),
+        };
+      });
+      const fleet = workerStats ? await workerStats().catch(() => null) : null;
+      // Share health only. Global job counts or worker identities could expose
+      // other tenants' activity; the lease rows above remain workspace-scoped.
+      res.json({
+        ...data,
+        workerFleet: fleet ? { alive: fleet.alive, heartbeatAt: fleet.heartbeatAt } : null,
+      });
+    }),
   );
   router.put(
     '/schedules/:id',

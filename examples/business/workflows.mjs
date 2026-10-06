@@ -6,7 +6,10 @@ const node = (id, kind, config = {}) => ({
   data: { kind, label: id, config },
 });
 const chain = (...middle) => {
-  const nodes = [node('input', 'input'), ...middle, node('output', 'output')];
+  const nodes = [node('input', 'input'), ...middle, node('output', 'output')].map((n, i) => ({
+    ...n,
+    position: { x: i * 340, y: 180 },
+  }));
   return {
     nodes,
     edges: nodes
@@ -15,6 +18,14 @@ const chain = (...middle) => {
   };
 };
 export function businessExamples({ collectionId, connectionId, researchToolId, approvedToolId }) {
+  const researchPositions = {
+    input: { x: 0, y: 180 },
+    internal: { x: 340, y: 40 },
+    external: { x: 340, y: 340 },
+    join: { x: 680, y: 180 },
+    report: { x: 1020, y: 180 },
+    output: { x: 1360, y: 180 },
+  };
   return [
     {
       id: 'internal-knowledge',
@@ -47,7 +58,7 @@ export function businessExamples({ collectionId, connectionId, researchToolId, a
             maxSteps: 3,
           }),
           node('output', 'output'),
-        ],
+        ].map((n) => ({ ...n, position: researchPositions[n.id] })),
         edges: [
           ['input', 'internal'],
           ['input', 'external'],
