@@ -99,6 +99,13 @@ export async function checkURL(value, policy = false) {
   await addressesFor(url, policy);
   return url;
 }
+// Socket adapters must dial this approved address rather than resolving the
+// hostname again after authorization. Certificate identity remains the hostname.
+export async function pinnedDestination(value, policy) {
+  const url = parseURL(value);
+  const addresses = await addressesFor(url, policy);
+  return { address: addresses[0].address, hostname: url.hostname.replace(/^\[|\]$/g, '') };
+}
 export function assertCredentialDestination(endpoint, destination) {
   const base = parseURL(endpoint),
     target = parseURL(destination);

@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import net from 'node:net';
 import { Readable } from 'node:stream';
 import { z } from 'zod';
 import pg from 'pg';
@@ -301,18 +302,37 @@ export function createPostgresAdapter({ clientFactory = (c) => new pg.Client(c) 
           'PostgreSQL credential must contain user and password.',
         );
       }
-      await a.ports.outbound?.authorizeDatabase?.(a.context, {
-        host: a.config.host,
-        port: a.config.port,
-        database: a.config.database,
-      });
+      let destination;
+      try {
+        destination = await a.ports.outbound?.authorizeDatabase?.(a.context, {
+          host: a.config.host,
+          port: a.config.port,
+          database: a.config.database,
+        });
+      } catch {
+        throw new ConnectorError(
+          'FORBIDDEN',
+          'Database destination is outside the administrator grant.',
+        );
+      }
       // Host/database access must be explicitly granted by security; HTTP DNS policy cannot protect a SQL socket.
-      if (!a.ports.outbound?.authorizeDatabase)
+      if (
+        !destination ||
+        !net.isIP(destination.address) ||
+        (net.isIP(a.config.host)
+          ? destination.servername
+          : destination.servername !== a.config.host.toLowerCase())
+      )
         throw new ConnectorError('FORBIDDEN', 'Database egress authorization is required.');
       const client = clientFactory({
         ...a.config,
         ...cred,
-        ssl: { rejectUnauthorized: true },
+        host: destination.address,
+        ssl: {
+          rejectUnauthorized: true,
+          ...(destination.servername ? { servername: destination.servername } : {}),
+          ...(destination.ca ? { ca: destination.ca } : {}),
+        },
         connectionTimeoutMillis: 10000,
         query_timeout: a.config.statementTimeoutMs,
       });

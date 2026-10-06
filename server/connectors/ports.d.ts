@@ -37,7 +37,7 @@ export interface ConnectorSecurityPorts {
     authorizeDatabase?(
       context: TenantContext,
       target: { host: string; port: number; database: string },
-    ): Promise<void>;
+    ): Promise<{ address: string; servername?: string; ca?: string }>;
     authorizeProcess?(
       context: TenantContext,
       process: { command: string; args: string[]; cwd?: string },

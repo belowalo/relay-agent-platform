@@ -430,23 +430,29 @@ test('S3 object ingestion, prefix restriction, conditional shared blob writes an
 });
 test('PostgreSQL uses restricted role, READ ONLY, local limits, parameters and closes on failure', async () => {
   const queries = [];
+  let clientConfig;
   let closed = 0;
-  const clientFactory = () => ({
-    connect: async () => {},
-    query: async (sql, params) => {
-      queries.push({ sql, params });
-      return sql.includes('pg_roles')
-        ? { rows: [{ rolsuper: false, rolbypassrls: false }] }
-        : { rows: [{ id: 1 }] };
-    },
-    end: async () => {
-      closed++;
-    },
-  });
+  const clientFactory = (config) => {
+    clientConfig = config;
+    return {
+      connect: async () => {},
+      query: async (sql, params) => {
+        queries.push({ sql, params });
+        return sql.includes('pg_roles')
+          ? { rows: [{ rolsuper: false, rolbypassrls: false }] }
+          : { rows: [{ id: 1 }] };
+      },
+      end: async () => {
+        closed++;
+      },
+    };
+  };
   const p = {
     ...ports,
     secrets: { resolve: async () => JSON.stringify({ user: 'reader', password: 'fixture' }) },
-    outbound: { authorizeDatabase: async () => {} },
+    outbound: {
+      authorizeDatabase: async () => ({ address: '127.0.0.1', servername: 'db.example.test' }),
+    },
   };
   const config = {
     host: 'db.example.test',
@@ -455,6 +461,8 @@ test('PostgreSQL uses restricted role, READ ONLY, local limits, parameters and c
   };
   const c = connectorFor('postgresql', config, p, { clientFactory });
   await invoke(c, 'query', { queryId: 'items', parameters: ['docs'] });
+  assert.equal(clientConfig.host, '127.0.0.1');
+  assert.deepEqual(clientConfig.ssl, { rejectUnauthorized: true, servername: 'db.example.test' });
   assert.ok(queries.some((q) => q.sql === 'BEGIN READ ONLY'));
   assert.ok(queries.some((q) => q.sql.includes('LIMIT 100') && q.params[0] === 'docs'));
   assert.equal(closed, 1);
@@ -472,6 +480,23 @@ test('PostgreSQL uses restricted role, READ ONLY, local limits, parameters and c
   });
   await assert.rejects(invoke(unsafe, 'health'), { code: 'FORBIDDEN' });
   assert.equal(closed, 2);
+  for (const destination of [
+    undefined,
+    { address: 'db.example.test', servername: 'db.example.test' },
+    { address: '127.0.0.1', servername: 'attacker.test' },
+  ]) {
+    const denied = connectorFor(
+      'postgresql',
+      config,
+      { ...p, outbound: { authorizeDatabase: async () => destination } },
+      {
+        clientFactory: () => {
+          throw new Error('Denied destination dialed');
+        },
+      },
+    );
+    await assert.rejects(invoke(denied, 'health'), { code: 'FORBIDDEN' });
+  }
 });
 test('synchronization checkpoints only after ingest, deduplicates revisions, and deletes mapped tombstones', async () => {
   const records = new Map([['deleted', { sourceId: 'old', revision: '1' }]]);

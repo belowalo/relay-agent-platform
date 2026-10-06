@@ -151,6 +151,42 @@ try {
   for (const f of await fs.readdir(path.join(root, 'secrets')))
     secrets.push((await fs.readFile(path.join(root, 'secrets', f), 'utf8')).trim());
   await run(process.execPath, ['bin/provision-embeddings.mjs', path.join(root, 'models')]);
+  const certificate = path.join(root, 'connector-pg.crt'),
+    privateKey = path.join(root, 'connector-pg.key');
+  await run('openssl', [
+    'req',
+    '-x509',
+    '-newkey',
+    'rsa:2048',
+    '-nodes',
+    '-days',
+    '1',
+    '-subj',
+    '/CN=qualification-postgres',
+    '-addext',
+    'subjectAltName=DNS:qualification-postgres,DNS:qualification-postgres-untrusted',
+    '-keyout',
+    privateKey,
+    '-out',
+    certificate,
+  ]);
+  // The ephemeral server alone receives its key. API/worker receive only the trust certificate.
+  await fs.chmod(privateKey, 0o444);
+  const dbGrant = {
+    port: 5432,
+    database: 'reporting',
+    privateCidrs: ['172.16.0.0/12', '192.168.0.0/16', '10.0.0.0/8'],
+  };
+  await fs.appendFile(
+    path.join(root, 'production.env'),
+    '\nOUTBOUND_POLICY_JSON=\'{"origins":["http://qualification-model:4320"],"privateCidrs":["172.16.0.0/12","192.168.0.0/16","10.0.0.0/8"]}\'\nOUTBOUND_DATABASE_POLICY_JSON=\'' +
+      JSON.stringify([
+        { ...dbGrant, host: 'qualification-postgres', caFile: '/run/relay-pg-ca.pem' },
+        { ...dbGrant, host: 'qualification-postgres-wrong', caFile: '/run/relay-pg-ca.pem' },
+        { ...dbGrant, host: 'qualification-postgres-untrusted' },
+      ]) +
+      "'\n",
+  );
   const override = path.join(root, 'integrated.yaml');
   await fs.writeFile(
     override,
@@ -159,12 +195,28 @@ try {
     environment:
       RUNTIME_LEASE_MS: '2000'
       ALLOW_REGISTRATION: 'true'
-      OUTBOUND_POLICY_JSON: '{"origins":["http://qualification-model:4320"],"privateCidrs":["172.16.0.0/12","192.168.0.0/16","10.0.0.0/8"]}'
+    volumes: ['${certificate}:/run/relay-pg-ca.pem:ro']
     ports: ['127.0.0.1::4311']
   worker:
     environment:
       RUNTIME_LEASE_MS: '2000'
-      OUTBOUND_POLICY_JSON: '{"origins":["http://qualification-model:4320"],"privateCidrs":["172.16.0.0/12","192.168.0.0/16","10.0.0.0/8"]}'
+    volumes: ['${certificate}:/run/relay-pg-ca.pem:ro']
+  qualification-postgres:
+    image: relay-postgres:local
+    entrypoint: [sh, -ec]
+    command: ['cp /fixture/server.key /tmp/server.key; chmod 600 /tmp/server.key; exec /usr/local/bin/docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/fixture/server.crt -c ssl_key_file=/tmp/server.key']
+    environment: {POSTGRES_USER: fixture_owner, POSTGRES_PASSWORD: synthetic-database-credential, POSTGRES_DB: reporting}
+    volumes: ['${certificate}:/fixture/server.crt:ro','${privateKey}:/fixture/server.key:ro']
+    networks:
+      private: {aliases: [qualification-postgres-wrong, qualification-postgres-untrusted]}
+    cap_drop: [ALL]
+    mem_limit: 256m
+    cpus: 0.5
+    healthcheck:
+      test: [CMD, pg_isready, -U, fixture_owner, -d, reporting]
+      interval: 2s
+      timeout: 2s
+      retries: 30
   qualification-model:
     image: relay-operations:local
     command: [node, bin/production-fixture.mjs]
@@ -193,6 +245,19 @@ try {
       'storage',
       'collector',
       'qualification-model',
+      'qualification-postgres',
+    );
+    await compose(
+      'exec',
+      '-T',
+      'qualification-postgres',
+      'psql',
+      '-U',
+      'fixture_owner',
+      '-d',
+      'reporting',
+      '-c',
+      "CREATE TABLE public.report_rows(id integer, category text); INSERT INTO public.report_rows VALUES(1,'selected'),(2,'other'); CREATE ROLE relay_reporting LOGIN PASSWORD 'synthetic-database-credential' NOSUPERUSER NOBYPASSRLS; GRANT SELECT ON public.report_rows TO relay_reporting;",
     );
     await compose('run', '--rm', 'migrate');
     const ownerPassword = path.join(root, 'owner-password');
@@ -422,6 +487,87 @@ try {
       200,
     );
     assert.ok(found.evidence.some((v) => v.citation.text.includes('Orion')));
+  });
+  await drill('native-postgres-pinned-tls-and-read-only-boundaries', async () => {
+    const base = `/api/w/${workspace}`;
+    const config = {
+      host: 'qualification-postgres',
+      database: 'reporting',
+      queries: {
+        selected: 'SELECT id FROM public.report_rows WHERE category=$1',
+        forbidden:
+          "WITH changed AS (INSERT INTO public.report_rows VALUES(3,'selected') RETURNING id) SELECT * FROM changed",
+      },
+    };
+    const save = async (changes = {}, user = 'relay_reporting') =>
+      expect(
+        await request(base + '/connectors', {
+          kind: 'postgresql',
+          config: { ...config, ...changes },
+          secret: JSON.stringify({ user, password: 'synthetic-database-credential' }),
+        }),
+        201,
+      ).id;
+    const id = await save();
+    assert.equal(expect(await request(base + `/connectors/${id}/test`, {}), 200).ok, true);
+    const selected = expect(
+      await request(base + `/connectors/${id}/invoke`, {
+        action: 'query',
+        input: { queryId: 'selected', parameters: ['selected'] },
+      }),
+      200,
+    );
+    assert.deepEqual(selected.data, [{ id: 1 }]);
+    const rejectedWrite = await request(base + `/connectors/${id}/invoke`, {
+      action: 'query',
+      input: { queryId: 'forbidden', parameters: [] },
+    });
+    assert.ok(!rejectedWrite.r.ok);
+    const denied = await save({ database: 'other' });
+    const deniedResult = expect(await request(base + `/connectors/${denied}/test`, {}), 200);
+    assert.equal(deniedResult.ok, false);
+    assert.equal(deniedResult.diagnostic.code, 'FORBIDDEN');
+    for (const host of ['qualification-postgres-wrong', 'qualification-postgres-untrusted']) {
+      const bad = await save({ host });
+      const result = expect(await request(base + `/connectors/${bad}/test`, {}), 200);
+      assert.equal(result.ok, false);
+      assert.equal(result.diagnostic.code, 'DEPENDENCY_UNAVAILABLE');
+    }
+    const superuser = await save({}, 'fixture_owner');
+    const superResult = expect(await request(base + `/connectors/${superuser}/test`, {}), 200);
+    assert.equal(superResult.ok, false);
+    assert.equal(superResult.diagnostic.code, 'FORBIDDEN');
+    assert.equal(
+      (
+        await compose(
+          'exec',
+          '-T',
+          'qualification-postgres',
+          'psql',
+          '-U',
+          'fixture_owner',
+          '-d',
+          'reporting',
+          '-Atc',
+          'SELECT count(*) FROM public.report_rows',
+        )
+      ).stdout.trim(),
+      '2',
+    );
+    report.postgresConnector = {
+      dial: 'approved literal IP with original TLS hostname',
+      certificate: 'ephemeral private test CA',
+      checks: [
+        'restricted role SELECT',
+        'database tuple denial',
+        'untrusted CA denial',
+        'hostname mismatch denial',
+        'superuser denial',
+        'write denial',
+      ],
+      scope:
+        'Actual native API and TLS PostgreSQL service on one host; not customer database or vendor quality.',
+    };
   });
   await drill('uncertain-write-kill-and-recovery-no-replay', async () => {
     const base = `/api/w/${workspace}`;

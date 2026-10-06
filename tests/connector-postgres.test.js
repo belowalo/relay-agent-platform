@@ -123,7 +123,9 @@ test('embedded PostgreSQL engine: actual read-only query execution and restricte
         secrets: {
           resolve: async () => JSON.stringify({ user: 'relay_reader', password: 'fixture' }),
         },
-        outbound: { authorizeDatabase: async () => {} },
+        outbound: {
+          authorizeDatabase: async () => ({ address: '127.0.0.1', servername: 'fixture.test' }),
+        },
       },
       {
         clientFactory: () => ({

@@ -29,6 +29,8 @@ x-app: &app
     PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?HTTPS origin required}
     COOKIE_SECURE: 'true'
     ALLOW_PRIVATE_NETWORK: 'false'
+    OUTBOUND_POLICY_JSON: '${OUTBOUND_POLICY_JSON:-}'
+    OUTBOUND_DATABASE_POLICY_JSON: '${OUTBOUND_DATABASE_POLICY_JSON:-}'
     DATABASE_URL_FILE: /run/secrets/app_database_url
     IDENTITY_DATABASE_URL_FILE: /run/secrets/identity_database_url
     RATE_DATABASE_URL_FILE: /run/secrets/rate_database_url

@@ -32,6 +32,7 @@ import { createProductionQuality } from './quality.js';
 import { createProductionPublications } from './publications.js';
 import { createProductionMemory } from './memory.js';
 import { createProductionDocumentSync } from './document-sync.js';
+import { createDatabaseEgress } from './database-egress.js';
 const parse = (value) => (typeof value === 'string' ? JSON.parse(value) : value);
 export function runtimePermission(operation) {
   if (['recover', 'reconcile', 'admin'].includes(operation.operation)) return 'workspace.manage';
@@ -180,6 +181,7 @@ export async function createRuntimePorts({ config, env = process.env }) {
       env.OUTBOUND_POLICY_JSON ? JSON.parse(env.OUTBOUND_POLICY_JSON) : {},
     );
     const outbound = {
+      authorizeDatabase: createDatabaseEgress(env),
       authorize: async (_ctx, url) => checkURL(url, policy),
       fetch: (url, options) => safeFetch(url, options, policy),
     };
