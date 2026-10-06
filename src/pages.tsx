@@ -110,10 +110,13 @@ function SparkIcon() {
 export function Dashboard(p: PageProps & { user: any }) {
   const { data } = useData(`${p.base}/overview`, p.notify);
   const { data: workflows } = useData<any[]>(`${p.base}/workflows`, p.notify);
+  const { data: collections } = useData<any[]>(`${p.base}/collections`, p.notify);
+  const { data: connections } = useData<any[]>(`${p.base}/connections`, p.notify);
   if (!data || !workflows) return <Loading />;
   const completed = data.runs.filter((r: any) => r.status === 'completed'),
     tokens = data.runs.reduce(
-      (t: number, r: any) => t + (r.usage.inputTokens || 0) + (r.usage.outputTokens || 0),
+      (t: number, r: any) =>
+        t + (r.usage.tokens ?? (r.usage.inputTokens || 0) + (r.usage.outputTokens || 0)),
       0,
     ),
     avg = completed.length
@@ -233,14 +236,14 @@ export function Dashboard(p: PageProps & { user: any }) {
               text: 'Add documents your agents can use.',
               icon: BookOpen,
               page: 'knowledge',
-              done: false,
+              done: !!collections?.some((c) => c.chunk_count > 0),
             },
             {
               title: 'Make the connection',
               text: 'Choose your provider or local model.',
               icon: Zap,
               page: 'connections',
-              done: false,
+              done: !!connections?.some((c) => c.provider !== 'credential'),
             },
           ].map((s, i) => (
             <button className="launch-step" key={s.title} onClick={() => p.go(s.page)}>
@@ -259,7 +262,8 @@ export function Dashboard(p: PageProps & { user: any }) {
             <p>
               Your data stays in this workspace.
               <br />
-              You decide where your models run.
+              Preview is deterministic. Live calls need a working model connection and may use
+              provider quota. Tools can act in either mode.
             </p>
           </div>
         </section>
@@ -892,6 +896,19 @@ export function Knowledge(p: PageProps) {
                         <small>
                           {(s.size / 1024).toFixed(1)} KB · {s.error || `${s.progress}% indexed`}
                         </small>
+                        {['queued', 'indexing'].includes(s.status) && (
+                          <progress
+                            aria-label={`Indexing ${s.name}`}
+                            max={100}
+                            value={s.progress || 0}
+                          />
+                        )}
+                        {s.error && (
+                          <small className="text-error">
+                            Check the file format and extracted text, then reindex. Scanned PDFs
+                            need OCR.
+                          </small>
+                        )}
                       </span>
                       <Badge status={s.status} />
                       <Button
@@ -960,6 +977,7 @@ export function Knowledge(p: PageProps) {
                 <input
                   required
                   placeholder="Ask something about your sources…"
+                  aria-label="Retrieval query"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
@@ -981,6 +999,35 @@ export function Knowledge(p: PageProps) {
                 <div className="retrieval-result" key={i}>
                   <span className="source-citation">{r.citation}</span>
                   <p>{r.content}</p>
+                  <details className="citation-details">
+                    <summary>Inspect citation</summary>
+                    <dl>
+                      <dt>Source</dt>
+                      <dd>{r.source || r.sourceId}</dd>
+                      <dt>Source ID</dt>
+                      <dd>{r.sourceId}</dd>
+                      <dt>Chunk ID</dt>
+                      <dd>{r.chunkId}</dd>
+                      {r.sourceVersion != null && (
+                        <>
+                          <dt>Evidence version</dt>
+                          <dd>{r.sourceVersion}</dd>
+                        </>
+                      )}
+                      {r.retrieval && (
+                        <>
+                          <dt>Retrieval method</dt>
+                          <dd>{r.retrieval}</dd>
+                        </>
+                      )}
+                      {Number.isFinite(r.score) && (
+                        <>
+                          <dt>Relevance score</dt>
+                          <dd>{r.score} (method-specific; not confidence)</dd>
+                        </>
+                      )}
+                    </dl>
+                  </details>
                   {r.url && (
                     <a target="_blank" rel="noreferrer" href={r.url}>
                       View source

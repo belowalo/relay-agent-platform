@@ -15,13 +15,18 @@ export async function api<T = any>(path: string, body?: unknown, method?: string
   } catch {
     throw new Error(`The server returned an invalid response (HTTP ${r.status}). Try again.`);
   }
-  if (!r.ok)
+  if (!r.ok) {
+    const error = data?.error;
+    const message = typeof error === 'string' ? error : error?.message;
+    const requestId = typeof error === 'object' ? error?.requestId : undefined;
     throw new Error(
-      data?.error ||
+      (message ||
         (r.status >= 500
           ? `Relay's API server is unavailable (HTTP ${r.status}). Try again.`
-          : `Request failed (HTTP ${r.status}). Try again.`),
+          : `Request failed (HTTP ${r.status}). Try again.`)) +
+        (requestId ? ` Reference: ${requestId}` : ''),
     );
+  }
   if (data === undefined && r.status !== 204)
     throw new Error('The server returned an empty response. Try again.');
   return data;

@@ -1,0 +1,10 @@
+{
+  admin off
+  auto_https disable_redirects
+}
+https://relay.example.com:8443 {
+  tls internal
+  @operations path /health/* /metrics /ops/*
+  respond @operations 404
+  reverse_proxy api:4311
+}

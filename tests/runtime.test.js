@@ -11,9 +11,11 @@ import { DatabaseSync } from 'node:sqlite';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { RelayClient } from '../sdk/javascript/relay.mjs';
+import { freeTestPort } from './helpers/port.js';
 
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'relay-runtime-test-'));
-const origin = 'http://127.0.0.1:14326';
+const port = await freeTestPort();
+const origin = `http://127.0.0.1:${port}`;
 const execute = promisify(execFile);
 let server,
   fixture,
@@ -54,7 +56,7 @@ async function ok(url, body, method, auth) {
 }
 async function start() {
   server = spawn(process.execPath, ['server/index.js'], {
-    env: { ...process.env, DATA_DIR: directory, PORT: '14326', ALLOW_PRIVATE_NETWORK: 'true' },
+    env: { ...process.env, DATA_DIR: directory, PORT: String(port), ALLOW_PRIVATE_NETWORK: 'true' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   server.stdout.on('data', (b) => {
@@ -150,6 +152,25 @@ before(async () => {
       return;
     }
     res.setHeader('Content-Type', 'text/event-stream');
+    if (req.url.startsWith('/tool-broken/')) {
+      res.write(
+        'data: ' +
+          JSON.stringify({
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    { index: 0, id: 'partial', function: { name: 'lookup', arguments: '{' } },
+                  ],
+                },
+              },
+            ],
+          }) +
+          '\n\n',
+      );
+      setTimeout(() => res.destroy(), 25);
+      return;
+    }
     if (req.url.startsWith('/broken/')) {
       res.write(
         'data: ' + JSON.stringify({ choices: [{ delta: { content: 'Partial text' } }] }) + '\n\n',
@@ -185,7 +206,10 @@ before(async () => {
     }
     res.write(
       'data: ' +
-        JSON.stringify({ choices: [], usage: { prompt_tokens: 20, completion_tokens: 10 } }) +
+        JSON.stringify({
+          choices: [{ delta: {}, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 20, completion_tokens: 10 },
+        }) +
         '\n\n',
     );
     res.end('data: [DONE]\n\n');
@@ -292,7 +316,8 @@ test('no fallback on authentication errors or partial streamed output', async ()
   const backup = await connection('/unused');
   const auth = await connection('/unauthorized');
   const broken = await connection('/broken');
-  for (const primary of [auth, broken]) {
+  const toolBroken = await connection('/tool-broken');
+  for (const primary of [auth, broken, toolBroken]) {
     const result = await run(
       graph(
         node('model', 'model', { connectionId: primary.id, fallbackConnectionIds: [backup.id] }),

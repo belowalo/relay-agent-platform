@@ -7,8 +7,8 @@ import path from 'node:path';
 import http from 'node:http';
 import * as OTPAuth from 'otpauth';
 const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'relay-platform-tests-'));
-const port = 14321,
-  origin = `http://127.0.0.1:${port}`;
+let port = Number(process.env.RELAY_PLATFORM_TEST_PORT || 0),
+  origin;
 let server,
   owner,
   viewer,
@@ -21,6 +21,13 @@ let server,
   toolRounds = 0;
 let logs = '';
 async function start() {
+  if (!port) {
+    const reservation = http.createServer();
+    await new Promise((resolve) => reservation.listen(0, '127.0.0.1', resolve));
+    port = reservation.address().port;
+    await new Promise((resolve) => reservation.close(resolve));
+  }
+  origin = `http://127.0.0.1:${port}`;
   server = spawn(process.execPath, ['server/index.js'], {
     cwd: process.cwd(),
     env: { ...process.env, PORT: String(port), DATA_DIR: testDir, ALLOW_PRIVATE_NETWORK: 'true' },
@@ -28,7 +35,9 @@ async function start() {
   });
   server.stdout.on('data', (b) => (logs += b));
   server.stderr.on('data', (b) => (logs += b));
-  for (let i = 0; i < 100; i++) {
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    if (server.exitCode !== null) throw new Error('Isolated server exited: ' + logs);
     try {
       if ((await fetch(origin + '/api/health')).ok) return;
     } catch {}
@@ -195,7 +204,8 @@ before(async () => {
       for (const frame of [
         { type: 'message_start', message: { usage: { input_tokens: 7 } } },
         { type: 'content_block_delta', delta: { text: 'Anthropic fixture answer' } },
-        { type: 'message_delta', usage: { output_tokens: 4 } },
+        { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 4 } },
+        { type: 'message_stop' },
       ])
         res.write('data: ' + JSON.stringify(frame) + '\n\n');
       res.end();
@@ -217,7 +227,6 @@ before(async () => {
         );
         return;
       }
-      res.setHeader('Content-Type', 'text/event-stream');
       let content = 'Recorded provider fixture response';
       const system = data.messages?.[0]?.content || '';
       if (system.includes('You supervise')) {
@@ -227,6 +236,21 @@ before(async () => {
           assignments: ids.map((nodeId) => ({ nodeId, task: 'Analyze assigned evidence' })),
         });
       }
+      if (data.stream === false) {
+        if (system.includes('Evaluate the answer'))
+          content = JSON.stringify({ score: 0.8, explanation: 'Fixture rubric grade' });
+        else if (system.includes('Return JSON conforming'))
+          content = JSON.stringify({ answer: 'structured fixture' });
+        res.setHeader('Content-Type', 'application/json');
+        res.end(
+          JSON.stringify({
+            choices: [{ message: { content }, finish_reason: 'stop' }],
+            usage: { prompt_tokens: 9, completion_tokens: 5 },
+          }),
+        );
+        return;
+      }
+      res.setHeader('Content-Type', 'text/event-stream');
       if (data.tools?.length && !data.messages.some((m) => m.role === 'tool')) {
         toolRounds++;
         res.write(
@@ -260,7 +284,18 @@ before(async () => {
       }
       res.write(
         'data: ' +
-          JSON.stringify({ choices: [], usage: { prompt_tokens: 9, completion_tokens: 5 } }) +
+          JSON.stringify({
+            choices: [
+              {
+                delta: {},
+                finish_reason:
+                  data.tools?.length && !data.messages.some((m) => m.role === 'tool')
+                    ? 'tool_calls'
+                    : 'stop',
+              },
+            ],
+            usage: { prompt_tokens: 9, completion_tokens: 5 },
+          }) +
           '\n\ndata: [DONE]\n\n',
       );
       res.end();
@@ -477,7 +512,11 @@ test('published versions stay immutable; authenticated API, webhook, chat and to
   assert.equal((await waitRun(chat.id)).output, 'VERSION ONE');
   const webhook = await fetch(origin + `/api/apps/${application.id}/webhook`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${application.token}`, 'Content-Type': 'application/json' },
+    headers: {
+      Authorization: `Bearer ${application.token}`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': 'fixture-webhook-0001',
+    },
     body: '{"input":"webhook"}',
   });
   assert.equal(webhook.status, 202);
@@ -1015,7 +1054,7 @@ test('MFA gates password login, prevents code replay, and supports one-use recov
   const otp = new OTPAuth.TOTP({ secret: OTPAuth.Secret.fromBase32(setup.secret) });
   const enabled = await ok(
     '/api/account/mfa/confirm',
-    { code: otp.generate() },
+    { code: otp.generate({ timestamp: Date.now() - 30000 }) },
     undefined,
     a.cookie,
   );
@@ -1087,17 +1126,19 @@ test('MFA gates password login, prevents code replay, and supports one-use recov
     ).status,
     401,
   );
-  await ok(
+  const disabled = await request(
     '/api/account/mfa/disable',
     { password: 'Test-password-2026', code: enabled.recoveryCodes[1] },
     undefined,
     a.cookie,
   );
+  assert.equal(disabled.status, 200);
+  const renewedCookie = disabled.headers.get('set-cookie').split(';')[0];
   await ok(
     '/api/account/password',
     { current: 'Test-password-2026', password: 'New-password-2026' },
     undefined,
-    a.cookie,
+    renewedCookie,
   );
   assert.equal((await request('/api/me', undefined, undefined, a.cookie)).status, 401);
   assert.equal(

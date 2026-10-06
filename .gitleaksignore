@@ -1,0 +1,2 @@
+# Reviewed documentation-only false positive: prose describing S3-compatible storage, not a credential. Exact historical finding only.
+b538bd8d8fe64b9a728a654bb92a9ff4b71f292e:docs/production/OPERATIONS.md:generic-api-key:15

@@ -1,0 +1,10 @@
+route:
+  receiver: operator-webhook
+  group_by: [alertname]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+receivers:
+  - name: operator-webhook
+    # Mount a private replacement with authenticated webhook_configs before external staging.
+    # Empty receiver intentionally does not contact any third party.

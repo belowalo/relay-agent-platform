@@ -1,0 +1,16 @@
+{
+  admin off
+  auto_https disable_redirects
+}
+https://{$RELAY_DOMAIN}:8443 {
+  encode zstd gzip
+  @operations path /health/* /metrics /ops/*
+  respond @operations 404
+  header Strict-Transport-Security "max-age=31536000"
+  reverse_proxy api:4311 {
+    health_uri /health/ready
+    health_interval 10s
+    lb_try_duration 5s
+    flush_interval -1
+  }
+}

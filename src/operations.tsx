@@ -61,14 +61,7 @@ export function RunTable({ runs, go }: { runs: any[]; go: Navigate }) {
         </thead>
         <tbody>
           {runs.map((r) => (
-            <tr
-              key={r.id}
-              onClick={() => go('history', r.id)}
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') go('history', r.id);
-              }}
-            >
+            <tr key={r.id} onClick={() => go('history', r.id)}>
               <td>
                 <span className="table-name">
                   <Network size={17} />
@@ -89,7 +82,16 @@ export function RunTable({ runs, go }: { runs: any[]; go: Navigate }) {
               <td>{duration(r.created_at, r.finished_at)}</td>
               <td>{date(r.created_at)}</td>
               <td>
-                <ChevronRight size={16} />
+                <Button
+                  variant="icon"
+                  aria-label={`Inspect run ${r.id}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    go('history', r.id);
+                  }}
+                >
+                  <ChevronRight size={16} />
+                </Button>
               </td>
             </tr>
           ))}
@@ -169,6 +171,7 @@ export function RunDetails({
   const { data: run, reload } = useData(`${base}/runs/${runId}`, notify);
   const [selected, setSelected] = useState(''),
     [tab, setTab] = useState('output');
+  const [decisionBusy, setDecisionBusy] = useState(false);
   useEffect(() => {
     const s = new EventSource(`${base}/runs/${runId}/events`);
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -191,6 +194,35 @@ export function RunDetails({
     run.steps.find((s: any) => s.status === 'waiting') ||
     run.steps[0];
   const events = run.events.filter((e: any) => e.node_id === step?.node_id);
+  async function decide(approved: boolean) {
+    setDecisionBusy(true);
+    try {
+      if (run.runtimeProfile === 'production') {
+        const approval = run.approvals?.find(
+          (a: any) => a.node_id === step.node_id && a.status === 'pending',
+        );
+        if (!approval)
+          throw new Error(
+            'The pending approval changed. Reload this run and review its arguments.',
+          );
+        await api(`${base}/approvals/${approval.id}/decision`, {
+          argumentHash: approval.argument_hash,
+          approved,
+        });
+      } else
+        await api(`${base}/runs/${run.id}/approve`, {
+          nodeId: step.node_id,
+          approved,
+          ...(approved ? {} : { feedback: 'Rejected in run inspector' }),
+        });
+      reload();
+    } catch (error) {
+      notify((error as Error).message, true);
+      reload();
+    } finally {
+      setDecisionBusy(false);
+    }
+  }
   return (
     <div className="run-detail">
       <div className="run-heading">
@@ -254,10 +286,37 @@ export function RunDetails({
           {run.error}
         </div>
       )}
+      <details className="run-diagnostics panel">
+        <summary>Run diagnostics</summary>
+        <dl>
+          <dt>Run ID</dt>
+          <dd>{run.id}</dd>
+          {run.requestId && (
+            <>
+              <dt>Request ID</dt>
+              <dd>{run.requestId}</dd>
+            </>
+          )}
+          <dt>Created</dt>
+          <dd>{run.created_at}</dd>
+          <dt>Finished</dt>
+          <dd>{run.finished_at || 'Not terminal'}</dd>
+        </dl>
+        <p>
+          Share these identifiers with your operator. Retrying an uncertain external action requires
+          reconciliation. Cancellation cannot undo an accepted external action.
+        </p>
+      </details>
+      {run.status === 'waiting' && (
+        <div role="status" className="info-banner">
+          This run is waiting for a human decision. Select the waiting step to inspect its exact
+          input and tool arguments.
+        </div>
+      )}
       <div className="run-stats">
         <span>
           <Zap size={15} />
-          {(run.usage.inputTokens || 0) + (run.usage.outputTokens || 0)} tokens
+          {run.usage.tokens ?? (run.usage.inputTokens || 0) + (run.usage.outputTokens || 0)} tokens
         </span>
         <span>
           {run.steps.filter((s: any) => s.status === 'completed').length}/{run.steps.length} steps
@@ -333,6 +392,7 @@ export function RunDetails({
                   .map((a: any) => (
                     <div key={a.id}>
                       <strong>{a.tool_name}</strong>
+                      <small>Approval {a.id} · exact arguments</small>
                       <pre className="result-block">{pretty(a.input)}</pre>
                     </div>
                   ))}
@@ -343,29 +403,16 @@ export function RunDetails({
                 <div className="inline-actions">
                   <Button
                     variant="primary"
-                    disabled={!editable(role)}
-                    onClick={async () => {
-                      await api(`${base}/runs/${run.id}/approve`, {
-                        nodeId: step.node_id,
-                        approved: true,
-                      });
-                      reload();
-                    }}
+                    disabled={!editable(role) || decisionBusy}
+                    onClick={() => void decide(true)}
                   >
                     <Check size={15} />
                     Approve & continue
                   </Button>
                   <Button
                     variant="danger"
-                    disabled={!editable(role)}
-                    onClick={async () => {
-                      await api(`${base}/runs/${run.id}/approve`, {
-                        nodeId: step.node_id,
-                        approved: false,
-                        feedback: 'Rejected in run inspector',
-                      });
-                      reload();
-                    }}
+                    disabled={!editable(role) || decisionBusy}
+                    onClick={() => void decide(false)}
                   >
                     Reject
                   </Button>
@@ -436,7 +483,10 @@ export function RunHistory(p: PageProps & { runId?: string }) {
     );
   const completed = data?.filter((r) => r.status === 'completed') || [];
   const usage =
-    data?.reduce((n, r) => n + (r.usage.inputTokens || 0) + (r.usage.outputTokens || 0), 0) || 0;
+    data?.reduce(
+      (n, r) => n + (r.usage.tokens ?? (r.usage.inputTokens || 0) + (r.usage.outputTokens || 0)),
+      0,
+    ) || 0;
   return (
     <>
       <PageHeader
@@ -506,6 +556,8 @@ export function RunHistory(p: PageProps & { runId?: string }) {
   );
 }
 export function Applications(p: PageProps) {
+  const { data: catalog } = useData<any>(`${p.base}/catalog`, p.notify);
+  const production = catalog?.profile === 'production';
   const { data, reload } = useData<any[]>(`${p.base}/applications`, p.notify);
   const { data: workflows } = useData<any[]>(`${p.base}/workflows`, p.notify);
   const [editing, setEditing] = useState<any>(null),
@@ -516,7 +568,11 @@ export function Applications(p: PageProps) {
       <PageHeader
         eyebrow="PUT YOUR TEAM TO WORK"
         title="Applications"
-        description="Publish a saved version as a local chat, widget, API, or webhook."
+        description={
+          production
+            ? 'Publish an immutable workflow through a private scoped API.'
+            : 'Publish a saved version as a local chat, widget, API, or webhook.'
+        }
       >
         {editable(p.role) && (
           <Button
@@ -561,14 +617,21 @@ export function Applications(p: PageProps) {
               </div>
               <h3>{a.name}</h3>
               <p>
+                Saved draft: v
+                {workflows?.find((f) => f.id === a.workflow_id)?.revision ?? 'unknown'} · Published:
+                v{a.revision}. Republish to apply draft changes.
+              </p>
+              <p>
                 {a.settings.public ? 'Public chat enabled' : 'Access token required'} ·{' '}
                 {a.settings.mode === 'preview' ? 'Development preview' : 'Live execution'}
               </p>
               <div className="app-links">
-                <a href={`/apps/${a.id}`} target="_blank" rel="noreferrer">
-                  Open hosted chat
-                  <ExternalLink size={15} />
-                </a>
+                {!production && (
+                  <a href={`/apps/${a.id}`} target="_blank" rel="noreferrer">
+                    Open hosted chat
+                    <ExternalLink size={15} />
+                  </a>
+                )}
                 <button
                   onClick={() => {
                     navigator.clipboard.writeText(`${location.origin}/api/apps/${a.id}/invoke`);
@@ -578,17 +641,19 @@ export function Applications(p: PageProps) {
                   Copy API endpoint
                   <Copy size={15} />
                 </button>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(
-                      `<script src="${location.origin}/widget.js" data-app="${a.id}"></script>`,
-                    );
-                    p.notify('Embed snippet copied. Public chat must be enabled for visitors.');
-                  }}
-                >
-                  Copy widget snippet
-                  <Copy size={15} />
-                </button>
+                {!production && (
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(
+                        `<script src="${location.origin}/widget.js" data-app="${a.id}"></script>`,
+                      );
+                      p.notify('Embed snippet copied. Public chat must be enabled for visitors.');
+                    }}
+                  >
+                    Copy widget snippet
+                    <Copy size={15} />
+                  </button>
+                )}
               </div>
               <footer>
                 <Button disabled={!editable(p.role)} onClick={() => setEditing(a)}>
@@ -650,16 +715,26 @@ export function Applications(p: PageProps) {
       <section className="panel api-guide">
         <h3>Call a published application</h3>
         <p>
-          POST JSON with an input field and Authorization: Bearer YOUR_APPLICATION_TOKEN. Webhooks
-          use the same token and a /webhook endpoint. Read the returned run endpoint for its result.
+          POST JSON with an input field and Authorization: Bearer YOUR_APPLICATION_TOKEN. Read the
+          returned run endpoint for its result.
         </p>
         <pre>{`POST /api/apps/{application-id}/invoke\nAuthorization: Bearer YOUR_APPLICATION_TOKEN\nContent-Type: application/json\n\n{"input":"Research our next opportunity"}`}</pre>
-        <h3>Use this workflow from another agent</h3>
-        <p>
-          Connect a Streamable HTTP MCP client to /api/apps/&#123;application-id&#125;/mcp with the
-          same bearer token. It exposes invoke_workflow and get_run. Public chat settings do not
-          grant MCP access.
-        </p>
+        {!production && (
+          <>
+            <h3>Use this workflow from another agent</h3>
+            <p>
+              Connect a Streamable HTTP MCP client to /api/apps/&#123;application-id&#125;/mcp with
+              the same bearer token. It exposes invoke_workflow and get_run. Public chat settings do
+              not grant MCP access.
+            </p>
+          </>
+        )}
+        {production && (
+          <p>
+            This deployment supports private API publications. Hosted chat, widgets, public guests,
+            webhooks and MCP publication are unavailable.
+          </p>
+        )}
         <p>
           The repository includes JavaScript and Python clients and a command-line runner. See
           docs/SDK.md for examples.
@@ -676,7 +751,17 @@ export function Applications(p: PageProps) {
               try {
                 const r = await api(
                   `${p.base}/applications${editing.id ? '/' + editing.id : ''}`,
-                  editing,
+                  {
+                    name: editing.name,
+                    workflowId: editing.workflowId || editing.workflow_id,
+                    publishLatest: editing.id ? editing.publishLatest : undefined,
+                    settings: {
+                      public: !!editing.settings.public,
+                      mode: editing.settings.mode,
+                      welcome: editing.settings.welcome,
+                      accent: editing.settings.accent,
+                    },
+                  },
                   editing.id ? 'PUT' : 'POST',
                 );
                 if (r.token) setToken(r);
@@ -750,22 +835,22 @@ export function Applications(p: PageProps) {
                 </Select>
               </Field>
             </div>
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                checked={!!editing.settings.public}
-                onChange={(e) =>
-                  setEditing({
-                    ...editing,
-                    settings: { ...editing.settings, public: e.target.checked },
-                  })
-                }
-              />
-              Allow public hosted chat and widget access
-            </label>
-            <small className="muted">
-              The API and webhook always require the application token.
-            </small>
+            {!production && (
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={!!editing.settings.public}
+                  onChange={(e) =>
+                    setEditing({
+                      ...editing,
+                      settings: { ...editing.settings, public: e.target.checked },
+                    })
+                  }
+                />
+                Allow public hosted chat and widget access
+              </label>
+            )}
+            <small className="muted">The API requires the application token.</small>
             {editing.id && (
               <label className="checkbox">
                 <input
@@ -803,17 +888,26 @@ export function Applications(p: PageProps) {
             Copy token
           </Button>
           <pre className="result-block">{`POST ${location.origin}/api/apps/${token.id}/invoke\nAuthorization: Bearer YOUR_APPLICATION_TOKEN\n\n{"input":"Your task"}`}</pre>
-          <Field label="MCP endpoint">
-            <input
-              readOnly
-              value={`${location.origin}/api/apps/${token.id}/mcp`}
-              onFocus={(e) => e.target.select()}
-            />
-          </Field>
-          <a className="btn primary" href={`/apps/${token.id}`} target="_blank" rel="noreferrer">
-            Open chat
-            <ExternalLink size={15} />
-          </a>
+          {!production && (
+            <>
+              <Field label="MCP endpoint">
+                <input
+                  readOnly
+                  value={`${location.origin}/api/apps/${token.id}/mcp`}
+                  onFocus={(e) => e.target.select()}
+                />
+              </Field>
+              <a
+                className="btn primary"
+                href={`/apps/${token.id}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open chat
+                <ExternalLink size={15} />
+              </a>
+            </>
+          )}
         </Modal>
       )}
       {deleting && (
@@ -1032,6 +1126,8 @@ export function Team(p: PageProps) {
   );
 }
 export function WorkspaceSettings(p: PageProps & { workspace: any; onUpdate: () => void }) {
+  const { data: catalog } = useData<any>(`${p.base}/catalog`, p.notify);
+  const production = catalog?.profile === 'production';
   const { data: memories, reload: reloadMemory } = useData<any[]>(`${p.base}/memories`, p.notify);
   const { data: audit } = useData<any[]>(`${p.base}/audit`, p.notify);
   const { data: artifacts } = useData<any[]>(`${p.base}/artifacts`, p.notify);
@@ -1065,10 +1161,12 @@ export function WorkspaceSettings(p: PageProps & { workspace: any; onUpdate: () 
                     `${p.base}/settings`,
                     {
                       name,
-                      settings: {
-                        ...(p.workspace.settings || {}),
-                        historyRetentionDays: retentionDays,
-                      },
+                      settings: production
+                        ? { historyRetentionDays: 0 }
+                        : {
+                            ...(p.workspace.settings || {}),
+                            historyRetentionDays: retentionDays,
+                          },
                     },
                     'PUT',
                   );
@@ -1089,14 +1187,18 @@ export function WorkspaceSettings(p: PageProps & { workspace: any; onUpdate: () 
               </Field>
               <Field
                 label="Completed run history retention (days)"
-                hint="0 keeps history. A positive value automatically deletes expired completed, failed, and cancelled runs. Active runs and evaluation evidence are retained; documents, artifacts, and audit records remain."
+                hint={
+                  production
+                    ? 'This production deployment retains run history. Automatic deletion requires a separately qualified retention policy.'
+                    : '0 keeps history. A positive value automatically deletes expired completed, failed, and cancelled runs. Active runs and evaluation evidence are retained; documents, artifacts, and audit records remain.'
+                }
               >
                 <input
                   type="number"
                   min="0"
                   max="3650"
-                  disabled={!admin(p.role)}
-                  value={retentionDays}
+                  disabled={!admin(p.role) || production}
+                  value={production ? 0 : retentionDays}
                   onChange={(e) => setRetentionDays(Number(e.target.value))}
                 />
               </Field>
@@ -1131,7 +1233,11 @@ export function WorkspaceSettings(p: PageProps & { workspace: any; onUpdate: () 
           <div className="section-heading">
             <div>
               <h3>Agent memory</h3>
-              <p>Persistent and conversation memories are isolated to this workspace.</p>
+              <p>
+                {production
+                  ? 'These memories belong to your account in this workspace. Other users and application tokens have separate memories.'
+                  : 'Persistent and conversation memories are isolated to this workspace.'}
+              </p>
             </div>
             <Badge status="draft">{memories?.length || 0} entries</Badge>
           </div>

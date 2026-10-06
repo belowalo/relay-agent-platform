@@ -1,6 +1,7 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { pipeline, env } from '@huggingface/transformers';
 env.cacheDir = workerData.cacheDir;
+env.allowRemoteModels = workerData.allowRemoteModels ?? true;
 const model = 'Xenova/all-MiniLM-L6-v2';
 let extractor;
 let queue = Promise.resolve();

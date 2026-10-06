@@ -5,6 +5,12 @@ import { getTool, executeTool, validateSchema, ToolApprovalRequired } from './to
 import { retrieve } from './knowledge.js';
 import { guardInput } from './guardrails.js';
 import {
+  attachRunActor,
+  inheritRunActor,
+  assertRunAuthorized,
+  runPrincipal,
+} from './security/local.js';
+import {
   registerWorker,
   heartbeat,
   owns,
@@ -75,6 +81,7 @@ export function createRun({
   mode = 'preview',
   conversationId = null,
   parentId = null,
+  actor = null,
 }) {
   const errors = validateGraph(graph);
   if (errors.length) throw new Error(errors.join('; '));
@@ -96,6 +103,7 @@ export function createRun({
       parentId,
       now(),
     );
+    if (actor) attachRunActor(runId, wid, actor);
     for (const n of runnable.nodes)
       exec(
         'INSERT INTO steps(id,run_id,node_id,status) VALUES(?,?,?,?)',
@@ -175,6 +183,7 @@ async function executeAgent(ctx, config, input, orchestrator = false) {
         typeof input === 'string' ? input : stringify(input),
         config.topK || 4,
         config.retrievalOptions,
+        ctx.actor,
       )),
     );
   let task = input;
@@ -392,6 +401,7 @@ registerNode('knowledge', async (ctx, c, input) => ({
     typeof input === 'string' ? input : stringify(input),
     c.topK,
     c.retrievalOptions,
+    ctx.actor,
   ),
 }));
 registerNode('condition', (ctx, c, input) => {
@@ -447,6 +457,7 @@ async function childResult(ctx, config, input, index) {
       conversationId: ctx.run.conversation_id,
       parentId: parentKey,
     });
+    inheritRunActor(ctx.run.id, rid);
     child = one('SELECT * FROM runs WHERE id=?', rid);
     ctx.emit('subworkflow.started', { runId: rid, iteration: index });
   }
@@ -515,9 +526,11 @@ async function executeStep(run, node, step, input) {
   const graph = decode(run.graph),
     cfg = node.data.config || {};
   try {
+    assertRunAuthorized(run.id);
     const output = await nodeHandlers[node.data.kind](
       {
         wid: run.workspace_id,
+        actor: runPrincipal(run.id),
         run,
         runId: run.id,
         runInput: decode(run.input),
@@ -526,9 +539,11 @@ async function executeStep(run, node, step, input) {
         graph,
         signal,
         assertLease: () => {
+          assertRunAuthorized(run.id);
           if (!owns(run)) throw new Error('Worker lease was lost; stale execution stopped');
         },
         emit: (type, data) => {
+          assertRunAuthorized(run.id);
           if (!owns(run)) throw new Error('Worker lease was lost; stale execution stopped');
           emit(run.id, type, node.id, data);
         },
@@ -714,36 +729,45 @@ export function pump() {
   }
   heartbeat(active.size);
   for (const run of claimRuns(recoverRun)) {
-    try {
-      const graph = decode(run.graph);
-      if (run.status !== 'waiting') {
-        const delta = run.active_since
-          ? Math.max(0, Date.now() - new Date(run.active_since).getTime())
-          : 0;
-        run.active_ms = (run.active_ms || 0) + delta;
-        if (!run.active_since || delta >= 1000)
-          exec(
-            'UPDATE runs SET active_ms=?,active_since=? WHERE id=?',
-            run.active_ms,
-            now(),
-            run.id,
-          );
+    // Claiming and pumping are separate transactions. A different process may
+    // cancel the run or take its expired lease between them. Hold the SQLite
+    // write lock while checking ownership and applying synchronous transitions.
+    transaction(() => {
+      if (!owns(run)) return;
+      try {
+        const graph = decode(run.graph);
+        if (run.status !== 'waiting') {
+          const delta = run.active_since
+            ? Math.max(0, Date.now() - new Date(run.active_since).getTime())
+            : 0;
+          run.active_ms = (run.active_ms || 0) + delta;
+          if (!run.active_since || delta >= 1000)
+            exec(
+              'UPDATE runs SET active_ms=?,active_since=? WHERE id=?',
+              run.active_ms,
+              now(),
+              run.id,
+            );
+        }
+        if (
+          run.status !== 'waiting' &&
+          run.active_ms > Number(graph.settings?.timeoutMs || 600000)
+        ) {
+          cancelRun(run.id, 'Workflow time limit exceeded');
+          return;
+        }
+        pumpRun(run);
+      } catch (e) {
+        exec(
+          "UPDATE runs SET status='failed',error=?,finished_at=? WHERE id=?",
+          safeError(e),
+          now(),
+          run.id,
+        );
+        emit(run.id, 'run.failed', null, { error: safeError(e) });
+        controllers.get(run.id)?.abort();
       }
-      if (run.status !== 'waiting' && run.active_ms > Number(graph.settings?.timeoutMs || 600000)) {
-        cancelRun(run.id, 'Workflow time limit exceeded');
-        continue;
-      }
-      pumpRun(run);
-    } catch (e) {
-      exec(
-        "UPDATE runs SET status='failed',error=?,finished_at=? WHERE id=?",
-        safeError(e),
-        now(),
-        run.id,
-      );
-      emit(run.id, 'run.failed', null, { error: safeError(e) });
-      controllers.get(run.id)?.abort();
-    }
+    });
   }
 }
 export function cancelRun(runId, reason = 'Cancelled by user') {

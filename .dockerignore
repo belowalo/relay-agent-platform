@@ -5,3 +5,10 @@ data
 .env*
 test-results
 playwright-report
+
+.operations-private
+operations-results
+docs/production/evidence
+production-results
+verification-results
+.integration-pr-body.md

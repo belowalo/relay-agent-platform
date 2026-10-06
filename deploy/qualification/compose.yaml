@@ -1,0 +1,19 @@
+services:
+  api:
+    command: [node, bin/production-entrypoint.mjs, qualification-service]
+    environment: { OPERATIONS_QUALIFICATION: 'true' }
+    ports: ['127.0.0.1:${OPERATIONS_PORT:-18431}:4311']
+  worker:
+    command: [node, bin/production-entrypoint.mjs, qualification-service]
+    environment: { OPERATIONS_QUALIFICATION: 'true' }
+  proxy:
+    volumes: ['./qualification/Caddyfile:/etc/caddy/Caddyfile:ro']
+  admin:
+    profiles: [tools]
+    image: relay-operations:local
+    command: [node, deploy/qualification/admin.mjs]
+    environment: { OPERATIONS_QUALIFICATION: 'true' }
+    secrets: [database_password]
+    networks: [private]
+  backup:
+    environment: { BACKUP_QUIESCED: 'true', RELEASE_COMMIT: '${RELEASE_COMMIT:-qualification}' }

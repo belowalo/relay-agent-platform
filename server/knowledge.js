@@ -3,6 +3,8 @@ import { safeFetch, responseText } from './network.js';
 import { workerId } from './leases.js';
 import { embed, embeddingIdentity, similarity } from './embeddings.js';
 import { retrievalOptions, sourceFilter, rerank } from './retrieval-controls.js';
+import { sourceAccessFilter } from './security/local.js';
+import { parseFile } from './knowledge/extract.js';
 export function readable(html) {
   return html
     .replace(/<(script|style|nav)[\s\S]*?<\/\1>/gi, ' ')
@@ -15,25 +17,7 @@ export function readable(html) {
     .trim();
 }
 export async function parseDocument(buffer, name) {
-  const ext = name.toLowerCase().split('.').pop();
-  if (ext === 'pdf') {
-    const { PDFParse } = await import('pdf-parse');
-    const parser = new PDFParse({ data: new Uint8Array(buffer) });
-    try {
-      return (await parser.getText()).text;
-    } finally {
-      await parser.destroy();
-    }
-  }
-  if (ext === 'docx') {
-    const mammoth = await import('mammoth');
-    return (await mammoth.extractRawText({ buffer })).value;
-  }
-  if (['txt', 'md', 'csv', 'json', 'html', 'htm'].includes(ext))
-    return ['html', 'htm'].includes(ext)
-      ? readable(buffer.toString('utf8'))
-      : buffer.toString('utf8');
-  throw new Error('Supported documents: PDF, DOCX, TXT, Markdown, CSV, JSON, HTML');
+  return (await parseFile(buffer, name)).segments.map((s) => s.text).join('\n');
 }
 export async function indexSource(sourceId) {
   const source = one('SELECT * FROM sources WHERE id=?', sourceId);
@@ -234,7 +218,7 @@ export async function crawlWebsite(wid, collectionId, start, maxPages = 1) {
     throw new Error('No new permitted pages were found; existing sources can be reindexed');
   return ids;
 }
-export async function retrieve(wid, collectionId, query, topK = 4, options = {}) {
+export async function retrieve(wid, collectionId, query, topK = 4, options = {}, actor = null) {
   const collection = one(
     'SELECT * FROM collections WHERE id=? AND workspace_id=?',
     collectionId,
@@ -247,6 +231,9 @@ export async function retrieve(wid, collectionId, query, topK = 4, options = {})
   if (options.minScore != null && config.retrieval === 'lexical' && !options.rerankConnectionId)
     throw new Error('Score thresholds require semantic retrieval or a rerank model');
   const filter = sourceFilter(options);
+  const acl = sourceAccessFilter(wid, actor);
+  filter.sql += acl.sql;
+  filter.args.push(...acl.args);
   const count = Math.max(1, Math.min(20, Number(topK) || 4));
   const terms =
     String(query)

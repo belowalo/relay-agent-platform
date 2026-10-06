@@ -3,8 +3,9 @@ import { DatabaseSync } from 'node:sqlite';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { all, one, exec, id, now, decode, encode, decrypt, hash, redact } from './db.js';
-import { safeFetch, responseText, checkURL } from './network.js';
+import { safeFetch, responseText, checkURL, assertCredentialDestination } from './network.js';
 import { readable } from './knowledge.js';
+import { sourceAccessFilter } from './security/local.js';
 export const ajv = new Ajv({ allErrors: true, strict: false });
 export function validateSchema(schema, value) {
   if (!schema || !Object.keys(schema).length) return;
@@ -17,10 +18,15 @@ export function getTool(wid, toolId) {
   if (!t) throw new Error('Tool was not found in this workspace');
   return { ...t, config: decode(t.config) };
 }
-export function credentialHeaders(wid, connectionId) {
+export function credentialHeaders(wid, connectionId, destination) {
   if (!connectionId) return {};
-  const c = one('SELECT secret FROM connections WHERE id=? AND workspace_id=?', connectionId, wid);
+  const c = one(
+    'SELECT secret,endpoint FROM connections WHERE id=? AND workspace_id=?',
+    connectionId,
+    wid,
+  );
   if (!c) throw new Error('Credential is outside this workspace');
+  assertCredentialDestination(c.endpoint, destination);
   const secret = decrypt(c.secret);
   return secret ? { Authorization: `Bearer ${secret}` } : {};
 }
@@ -34,9 +40,9 @@ export const toolHandlers = {
     const headers = {
       Accept: 'application/json',
       ...c.headers,
-      ...credentialHeaders(ctx.wid, c.connectionId),
+      ...credentialHeaders(ctx.wid, c.connectionId, url),
     };
-    const options = { method, headers, signal: ctx.signal };
+    const options = { method, headers, signal: ctx.signal, noRedirect: !!c.connectionId };
     if (!['GET', 'HEAD'].includes(method)) {
       options.body = encode(c.body ?? input);
       headers['Content-Type'] = 'application/json';
@@ -65,7 +71,11 @@ export const toolHandlers = {
     url.searchParams.set('format', 'json');
     const r = await safeFetch(
       url.href,
-      { headers: credentialHeaders(ctx.wid, c.connectionId), signal: ctx.signal },
+      {
+        headers: credentialHeaders(ctx.wid, c.connectionId, url.href),
+        signal: ctx.signal,
+        noRedirect: !!c.connectionId,
+      },
       !!c.allowPrivate,
     );
     if (!r.ok) throw new Error(`Search endpoint returned ${r.status}`);
@@ -105,6 +115,8 @@ export const toolHandlers = {
     throw new Error('Choose list, read, or write');
   },
   async database(ctx, c, input) {
+    if (process.env.RELAY_PROFILE === 'production' || process.env.NODE_ENV === 'production')
+      throw new Error('Arbitrary database queries require an isolated query service');
     const sql = String(c.query || input?.query || 'SELECT * FROM documents LIMIT 10');
     if (!/^\s*SELECT\b/i.test(sql) || /;\s*\S/.test(sql))
       throw new Error('Database tools accept one read-only SELECT statement');
@@ -112,9 +124,12 @@ export const toolHandlers = {
     try {
       database.exec('CREATE TABLE documents(id TEXT,name TEXT,content TEXT,collection_id TEXT);');
       const insert = database.prepare('INSERT INTO documents VALUES(?,?,?,?)');
+      const acl = sourceAccessFilter(ctx.wid, ctx.actor);
       for (const row of all(
-        'SELECT id,name,content,collection_id FROM sources WHERE workspace_id=?',
+        'SELECT s.id,s.name,s.content,s.collection_id FROM sources s WHERE s.workspace_id=?' +
+          acl.sql,
         ctx.wid,
+        ...acl.args,
       ))
         insert.run(row.id, row.name, row.content, row.collection_id);
       database.exec('PRAGMA query_only=ON');
@@ -127,9 +142,18 @@ export const toolHandlers = {
     await checkURL(c.url, !!c.allowPrivate);
     const client = new Client({ name: 'relay', version: '0.1.0' }, { capabilities: {} });
     const transport = new StreamableHTTPClientTransport(new URL(c.url), {
-      requestInit: { headers: credentialHeaders(ctx.wid, c.connectionId), signal: ctx.signal },
-      fetch: (url, options) =>
-        safeFetch(String(url), { ...options, signal: ctx.signal }, !!c.allowPrivate),
+      requestInit: {
+        headers: credentialHeaders(ctx.wid, c.connectionId, c.url),
+        signal: ctx.signal,
+      },
+      fetch: (url, options) => {
+        credentialHeaders(ctx.wid, c.connectionId, String(url));
+        return safeFetch(
+          String(url),
+          { ...options, signal: ctx.signal, noRedirect: true },
+          !!c.allowPrivate,
+        );
+      },
     });
     try {
       await client.connect(transport);

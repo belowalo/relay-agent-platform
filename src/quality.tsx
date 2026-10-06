@@ -671,8 +671,14 @@ export function Operations(p: PageProps) {
         <>
           <section className="quality-metrics panel">
             <div>
-              <strong>{data.workers.length}</strong>
-              <small>Healthy workers</small>
+              <strong>
+                {data.profile === 'production'
+                  ? (data.workerFleet?.alive ?? 'Unknown')
+                  : data.workers.length}
+              </strong>
+              <small>
+                {data.profile === 'production' ? 'Healthy fleet workers' : 'Healthy workers'}
+              </small>
             </div>
             <div>
               <strong>{data.metrics.runs}</strong>
@@ -689,18 +695,32 @@ export function Operations(p: PageProps) {
           </section>
           <div className="form-grid">
             <section className="panel quality-card">
-              <h3>Execution workers</h3>
+              <h3>
+                {data.profile === 'production' ? 'Current workspace leases' : 'Execution workers'}
+              </h3>
+              {data.profile === 'production' && (
+                <p>
+                  Fleet health reflects shared worker heartbeats. The leases below belong to this
+                  workspace; a healthy worker count does not establish available execution capacity.
+                </p>
+              )}
               {data.workers.map((w: any) => (
                 <div className="quality-row" key={w.id}>
                   <Activity size={17} />
                   <span>{w.name}</span>
                   <Badge status="ready">
-                    {w.active}/{w.capacity} active steps
+                    {data.profile === 'production'
+                      ? `${w.active} active runs`
+                      : `${w.active}/${w.capacity} active steps`}
                   </Badge>
                 </div>
               ))}
               {!data.workers.length && (
-                <p>No healthy worker is connected. Queued runs wait for a worker.</p>
+                <p>
+                  {data.profile === 'production'
+                    ? 'No current workspace run holds an active worker lease.'
+                    : 'No healthy worker is connected. Queued runs wait for a worker.'}
+                </p>
               )}
             </section>
             <section className="panel quality-card">
